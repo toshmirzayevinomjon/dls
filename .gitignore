@@ -12,6 +12,8 @@ npm-debug.log*
 build/
 local.properties
 *.apk
+# Lekin saytda tarqatish uchun APK'ga ruxsat (Railway shuni serve qiladi)
+!backend/public/downloads/*.apk
 *.keystore
 .idea/
 *.iml

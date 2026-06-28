@@ -20,7 +20,11 @@ app.use('/templates', express.static(path.join(__dirname, 'templates')));
 // Yuklab olish sayti (landing page) va APK fayli shu papkadan beriladi
 app.use(express.static(path.join(__dirname, 'public')));
 
-const BASE_URL = process.env.BASE_URL || `http://192.168.1.100:${PORT}`;
+// Railway deploy qilinganda RAILWAY_PUBLIC_DOMAIN avtomatik beriladi.
+// Lokalda BASE_URL ni .env orqali bering yoki localhost ishlatiladi.
+const RAILWAY_DOMAIN = process.env.RAILWAY_PUBLIC_DOMAIN;
+const BASE_URL = process.env.BASE_URL
+    || (RAILWAY_DOMAIN ? `https://${RAILWAY_DOMAIN}` : `http://localhost:${PORT}`);
 const STATS_FILE = path.join(__dirname, 'stats.json');
 
 // ====================== SOZLAMALAR ======================
