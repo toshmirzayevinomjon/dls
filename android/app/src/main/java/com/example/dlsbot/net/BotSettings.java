@@ -15,6 +15,13 @@ public class BotSettings {
     public float[] scales;     // #3 multi-scale
     public List<ButtonCoord> buttons;
 
+    // Avtonom navigatsiya
+    public List<String> packageNames; // DLS paket nomlari
+    public float navThreshold;        // menyu tugmalari uchun ishonch chegarasi
+    public long relaunchAfterMs;      // o'yin ochiq bo'lmasa, qancha kutib qayta ochish
+    public int maxBackTries;          // noma'lum ekranda necha marta BACK
+    public float heatThrottleC;       // shu haroratdan oshsa sekinlashtirish (Celsius)
+
     public static class Roi {
         public float x, y, w, h; // normallashtirilgan 0..1
     }

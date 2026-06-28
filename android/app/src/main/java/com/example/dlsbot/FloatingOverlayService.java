@@ -34,6 +34,12 @@ public class FloatingOverlayService extends Service {
     private int profileIndex = 0;
     private Button btnProfile;
 
+    // #41 tezlik: normal / tez / sekin
+    private final String[] speedLabels = { "Normal", "Tez", "Sekin" };
+    private final float[] speedFactors = { 1.0f, 0.6f, 1.6f };
+    private int speedIndex = 0;
+    private Button btnSpeed;
+
     @Override
     public void onCreate() {
         super.onCreate();
@@ -89,10 +95,20 @@ public class FloatingOverlayService extends Service {
         });
         BotState.get().profile = profiles[profileIndex];
 
+        btnSpeed = makeButton("Tezlik: " + speedLabels[speedIndex], "#00838F");
+        btnSpeed.setOnClickListener(v -> {
+            speedIndex = (speedIndex + 1) % speedFactors.length;
+            BotState.get().speedFactor = speedFactors[speedIndex];
+            btnSpeed.setText("Tezlik: " + speedLabels[speedIndex]);
+            Toast.makeText(this, "Tezlik: " + speedLabels[speedIndex], Toast.LENGTH_SHORT).show();
+        });
+        BotState.get().speedFactor = speedFactors[speedIndex];
+
         overlayView.addView(btnStart);
         overlayView.addView(btnStop);
         overlayView.addView(btnCalib);
         overlayView.addView(btnProfile);
+        overlayView.addView(btnSpeed);
 
         int type = (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
                 ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY

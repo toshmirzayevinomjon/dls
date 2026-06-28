@@ -24,4 +24,7 @@ public interface ApiService {
 
     @POST("api/bot/stats")
     Call<Void> reportStats(@Body StatsRequest body);
+
+    @POST("api/bot/log")
+    Call<Void> reportLog(@Body LogRequest body);
 }

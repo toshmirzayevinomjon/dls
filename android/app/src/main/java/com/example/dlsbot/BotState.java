@@ -33,6 +33,9 @@ public final class BotState {
     // #9 tanlangan taktika profili
     public volatile String profile = "balanced";
 
+    // #41 tezlik koeffitsienti: fast=0.6, normal=1.0, slow=1.6
+    public volatile float speedFactor = 1.0f;
+
     public synchronized void setLatestFrame(Bitmap bmp) {
         this.latestFrame = bmp;
     }

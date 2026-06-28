@@ -2,8 +2,11 @@ package com.example.dlsbot;
 
 import android.accessibilityservice.AccessibilityService;
 import android.accessibilityservice.GestureDescription;
+import android.content.Intent;
+import android.content.IntentFilter;
 import android.graphics.Bitmap;
 import android.graphics.Path;
+import android.os.BatteryManager;
 import android.os.Handler;
 import android.os.HandlerThread;
 import android.util.Log;
@@ -14,6 +17,7 @@ import com.example.dlsbot.net.BotSettings;
 import com.example.dlsbot.net.ButtonCoord;
 import com.example.dlsbot.net.DecisionRequest;
 import com.example.dlsbot.net.DecisionResponse;
+import com.example.dlsbot.net.LogRequest;
 import com.example.dlsbot.net.ScoreRequest;
 import com.example.dlsbot.net.ScoreResponse;
 import com.example.dlsbot.net.StatsRequest;
@@ -28,6 +32,7 @@ import org.opencv.core.Size;
 import org.opencv.imgproc.Imgproc;
 
 import java.io.InputStream;
+import java.util.List;
 
 import okhttp3.Request;
 import okhttp3.Response;
@@ -52,17 +57,23 @@ public class MyAccessibilityBotService extends AccessibilityService {
     private long lastStrategyTime = 0;
     private long lastActionTime = 0;
 
-    // Hisob (#6 raqib goli ham)
     private int myGoals = 0, oppGoals = 0;
     private long lastGoalTime = 0, lastConcedeTime = 0;
 
-    // #7 o'yin holati
+    // Navigatsiya holati
     private String gameState = "NOMA'LUM";
+    private volatile String currentPackage = "";
+    private long lastInMatchTime = 0;
+    private long lastLaunchTime = 0;
+    private long lastBackTime = 0;
+    private int backPressCount = 0;
 
-    // FPS hisoblash
+    // FPS va qizish
     private long lastFpsTime = 0;
     private int frameCount = 0;
     private float fps = 0f;
+    private long heatExtraDelay = 0;
+    private long lastHeatCheck = 0;
 
     @Override
     public void onServiceConnected() {
@@ -84,6 +95,8 @@ public class MyAccessibilityBotService extends AccessibilityService {
         loopActive = true;
         BotState.get().running.set(true);
         myGoals = 0; oppGoals = 0;
+        backPressCount = 0;
+        lastInMatchTime = System.currentTimeMillis();
         reportScore("RESET");
         botHandler.post(this::initThenLoop);
     }
@@ -106,7 +119,7 @@ public class MyAccessibilityBotService extends AccessibilityService {
             stopBot();
             return;
         }
-        loopOnce();
+        tick();
     }
 
     private void loadSettings() throws Exception {
@@ -127,7 +140,7 @@ public class MyAccessibilityBotService extends AccessibilityService {
             Imgproc.cvtColor(color, gray, Imgproc.COLOR_RGBA2GRAY);
             color.release();
             BotState.get().templates.put(item.name, gray);
-            Log.i(TAG, "Shablon: " + item.name + " " + gray.cols() + "x" + gray.rows());
+            Log.i(TAG, "Shablon: " + item.name);
         }
     }
 
@@ -146,128 +159,174 @@ public class MyAccessibilityBotService extends AccessibilityService {
     }
 
     // ===================== ASOSIY SIKL =====================
-    private void loopOnce() {
+    private void tick() {
         if (!loopActive) return;
         BotState state = BotState.get();
         BotSettings s = state.settings;
         try {
             Bitmap frame = state.getLatestFrameCopy();
             if (frame != null && state.isReady()) {
-                processFrame(frame, s);
+                Mat small = prepare(frame, s);
                 frame.recycle();
+                navigateAndPlay(small, s);
+                small.release();
                 updateFps();
             }
-        } catch (Exception e) {
-            Log.e(TAG, "Sikl xato: " + e.getMessage());
+            heatThrottle(s);
+        } catch (Throwable t) {
+            Log.e(TAG, "Sikl xato: " + t.getMessage());
+            reportLog("ERROR", "tick: " + t);
         }
         long base = (s != null) ? s.loopIntervalMs : 130;
         long next = Humanizer.randomDelay(base, base + 70);
-        botHandler.postDelayed(this::loopOnce, next);
+        next = (long) (next * BotState.get().speedFactor) + heatExtraDelay;
+        botHandler.postDelayed(this::tick, next);
     }
 
-    private void updateFps() {
-        frameCount++;
-        long now = System.currentTimeMillis();
-        if (now - lastFpsTime >= 1000) {
-            fps = frameCount * 1000f / (now - lastFpsTime);
-            frameCount = 0;
-            lastFpsTime = now;
-        }
-    }
-
-    private void processFrame(Bitmap frame, BotSettings s) {
-        int pw = s.processWidth, ph = s.processHeight;
-
+    private Mat prepare(Bitmap frame, BotSettings s) {
         Mat full = new Mat();
         Utils.bitmapToMat(frame, full);
         Mat gray = new Mat();
         Imgproc.cvtColor(full, gray, Imgproc.COLOR_RGBA2GRAY);
         full.release();
         Mat small = new Mat();
-        Imgproc.resize(gray, small, new Size(pw, ph));
+        Imgproc.resize(gray, small, new Size(s.processWidth, s.processHeight));
         gray.release();
+        return small;
+    }
 
-        // #7 O'yin holati: PLAY tugmasi ko'rinsa -> menyudamiz, uni bosamiz
-        if (handleGameState(small, s, pw, ph)) {
-            small.release();
+    // ===================== AVTONOM NAVIGATSIYA =====================
+    private void navigateAndPlay(Mat small, BotSettings s) {
+        long now = System.currentTimeMillis();
+
+        // #49: O'yin oldinda emasmi? -> ochishga harakat qilamiz
+        if (!isTargetGame(currentPackage)) {
+            gameState = "O'YIN OCHIQ EMAS";
+            if (now - lastLaunchTime > s.relaunchAfterMs) {
+                lastLaunchTime = now;
+                launchGame(s);
+            }
+            pushDebug(null, s);
             return;
         }
 
-        // Gollarni tekshiramiz (#6 ham)
+        // Match tugadi / popup -> davom ettirish tugmasini bosamiz
+        if (tapIfFound(small, "continue_button", s)) { gameState = "MATCH TUGADI"; lastInMatchTime = now; return; }
+        if (tapIfFound(small, "ok_button", s)) { gameState = "OYNA"; lastInMatchTime = now; return; }
+
+        // Menyu -> PLAY bosib matchga kiramiz
+        if (tapIfFound(small, "play_button", s)) { gameState = "MENYU"; lastInMatchTime = now; backPressCount = 0; return; }
+
+        // Gollarni tekshiramiz
         detectGoals(small, s);
 
-        // #3 + #10: to'pni ROI ichida, multi-scale bilan qidiramiz
+        // To'p bormi? -> o'yin ichidamiz
         Rect roi = Vision.roiFromSettings(s);
         Vision.Match ball = Vision.matchMultiScale(
                 small, BotState.get().templates.get("ball"), s.matchThreshold, s.scales, roi);
 
-        // #2 To'p bizdami: boshqaruv belgisi to'pga yaqinmi?
-        boolean hasBall = false;
-        if (ball != null) {
-            Vision.Match ctrl = Vision.matchMultiScale(
-                    small, BotState.get().templates.get("control_indicator"),
-                    s.matchThreshold, s.scales, roi);
-            if (ctrl != null) {
-                float d = Vision.distance(ball.cx, ball.cy, ctrl.cx, ctrl.cy);
-                hasBall = d < (pw * 0.08f); // ~8% ekran kengligi ichida bo'lsa bizniki
-            } else {
-                hasBall = ball.score > (s.matchThreshold + 0.08f);
-            }
-        }
-
         if (ball != null) {
             gameState = "O'YINDA";
-            float bx = ball.cx / pw, by = ball.cy / ph;
-            maybeUpdateStrategy(bx, by, hasBall, s.attackRight);
-            actByStrategy(s);
-        } else {
-            gameState = "TOP YO'Q";
+            lastInMatchTime = now;
+            backPressCount = 0;
+            playFootball(small, ball, s, roi);
+            pushDebug(ball, s);
+            return;
         }
 
-        pushDebug(ball, pw, ph, s);
-        small.release();
+        // Hech narsa tanilmadi -> noto'g'ri/noma'lum ekran -> chiqishga harakat
+        gameState = "NOMA'LUM EKRAN";
+        handleUnknownScreen(now, s);
+        pushDebug(null, s);
     }
 
-    // #7 PLAY tugmasini topib bosadi
-    private boolean handleGameState(Mat small, BotSettings s, int pw, int ph) {
-        Mat playTmpl = BotState.get().templates.get("play_button");
-        if (playTmpl == null) return false;
-        float th = Math.max(0.78f, s.matchThreshold + 0.16f);
-        Vision.Match play = Vision.matchSingle(small, playTmpl, th, null);
-        if (play != null) {
-            gameState = "MENYU";
-            int sw = BotState.get().screenWidth, sh = BotState.get().screenHeight;
-            float rx = play.cx / pw * sw, ry = play.cy / ph * sh;
-            humanTap(rx, ry, sw, sh);
-            Log.i(TAG, "MENYU: PLAY bosildi");
-            pushDebug(null, pw, ph, s);
-            return true;
+    // #46: Noma'lum ekrandan chiqish (Back -> bo'lmasa qayta ishga tushirish)
+    private void handleUnknownScreen(long now, BotSettings s) {
+        long stuck = now - lastInMatchTime;
+        if (now - lastBackTime < 1600) return;
+        lastBackTime = now;
+
+        if (backPressCount < s.maxBackTries) {
+            performGlobalAction(GLOBAL_ACTION_BACK);
+            backPressCount++;
+            Log.i(TAG, "Noma'lum ekran -> BACK (" + backPressCount + ")");
+        } else {
+            // Back yordam bermadi -> o'yinni qaytadan ochamiz
+            backPressCount = 0;
+            Log.i(TAG, "Ko'p marta BACK -> o'yin qayta ochiladi");
+            launchGame(s);
+        }
+        if (stuck > 60000) reportLog("WARN", "60s o'yin ichiga kira olmadi");
+    }
+
+    // O'yinni ishga tushirish (paket nomlari ro'yxati bo'yicha)
+    private void launchGame(BotSettings s) {
+        List<String> pkgs = s.packageNames;
+        if (pkgs == null) return;
+        for (String pkg : pkgs) {
+            try {
+                Intent i = getPackageManager().getLaunchIntentForPackage(pkg);
+                if (i != null) {
+                    i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                    startActivity(i);
+                    Log.i(TAG, "O'yin ochilmoqda: " + pkg);
+                    return;
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Launch xato: " + e.getMessage());
+            }
+        }
+        Log.e(TAG, "DLS topilmadi (paket o'rnatilmagan?)");
+    }
+
+    private boolean isTargetGame(String pkg) {
+        if (pkg == null || pkg.isEmpty()) return false;
+        BotSettings s = BotState.get().settings;
+        if (s == null || s.packageNames == null) return false;
+        for (String p : s.packageNames) {
+            if (pkg.equals(p)) return true;
         }
         return false;
     }
 
-    // Bizning va raqib gollarini aniqlaydi (#6)
+    // Shablon topilsa, uni bosadi (navigatsiya tugmalari uchun)
+    private boolean tapIfFound(Mat small, String name, BotSettings s) {
+        Mat t = BotState.get().templates.get(name);
+        if (t == null) return false;
+        Vision.Match m = Vision.matchSingle(small, t, s.navThreshold, null);
+        if (m == null) return false;
+        int sw = BotState.get().screenWidth, sh = BotState.get().screenHeight;
+        humanTap(m.cx / s.processWidth * sw, m.cy / s.processHeight * sh, sw, sh);
+        Log.i(TAG, "Navigatsiya: " + name + " bosildi");
+        return true;
+    }
+
+    // ===================== FUTBOL O'YINI =====================
+    private void playFootball(Mat small, Vision.Match ball, BotSettings s, Rect roi) {
+        boolean hasBall;
+        Vision.Match ctrl = Vision.matchMultiScale(
+                small, BotState.get().templates.get("control_indicator"), s.matchThreshold, s.scales, roi);
+        if (ctrl != null) {
+            float d = Vision.distance(ball.cx, ball.cy, ctrl.cx, ctrl.cy);
+            hasBall = d < (s.processWidth * 0.08f);
+        } else {
+            hasBall = ball.score > (s.matchThreshold + 0.08f);
+        }
+        float bx = ball.cx / s.processWidth, by = ball.cy / s.processHeight;
+        maybeUpdateStrategy(bx, by, hasBall, s.attackRight);
+        actByStrategy(s);
+    }
+
     private void detectGoals(Mat small, BotSettings s) {
         long now = System.currentTimeMillis();
         float th = Math.max(0.75f, s.matchThreshold + 0.13f);
-
         if (now - lastGoalTime >= GOAL_DEBOUNCE_MS) {
             Vision.Match g = Vision.matchSingle(small, BotState.get().templates.get("goal_banner"), th, null);
-            if (g != null) {
-                lastGoalTime = now;
-                myGoals++;
-                Log.i(TAG, "BIZNING GOL! " + myGoals);
-                reportScore("MY_GOAL");
-            }
+            if (g != null) { lastGoalTime = now; myGoals++; Log.i(TAG, "BIZNING GOL! " + myGoals); reportScore("MY_GOAL"); }
         }
         if (now - lastConcedeTime >= GOAL_DEBOUNCE_MS) {
             Vision.Match c = Vision.matchSingle(small, BotState.get().templates.get("concede_banner"), th, null);
-            if (c != null) {
-                lastConcedeTime = now;
-                oppGoals++;
-                Log.i(TAG, "RAQIB GOL! " + oppGoals);
-                reportScore("OPP_GOAL");
-            }
+            if (c != null) { lastConcedeTime = now; oppGoals++; Log.i(TAG, "RAQIB GOL! " + oppGoals); reportScore("OPP_GOAL"); }
         }
     }
 
@@ -275,11 +334,7 @@ public class MyAccessibilityBotService extends AccessibilityService {
         ApiClient.getService().reportScore(new ScoreRequest(MATCH_ID, event))
                 .enqueue(new Callback<ScoreResponse>() {
                     @Override public void onResponse(Call<ScoreResponse> c, retrofit2.Response<ScoreResponse> r) {
-                        if (r.isSuccessful() && r.body() != null) {
-                            myGoals = r.body().myGoals;
-                            oppGoals = r.body().oppGoals;
-                            Log.i(TAG, "Server rejim: " + r.body().mode);
-                        }
+                        if (r.isSuccessful() && r.body() != null) { myGoals = r.body().myGoals; oppGoals = r.body().oppGoals; }
                     }
                     @Override public void onFailure(Call<ScoreResponse> c, Throwable t) { }
                 });
@@ -289,7 +344,6 @@ public class MyAccessibilityBotService extends AccessibilityService {
         long now = System.currentTimeMillis();
         if (now - lastStrategyTime < 1500) return;
         lastStrategyTime = now;
-
         DecisionRequest req = new DecisionRequest();
         req.matchId = MATCH_ID;
         req.profile = BotState.get().profile;
@@ -300,7 +354,6 @@ public class MyAccessibilityBotService extends AccessibilityService {
         req.attackRight = attackRight;
         req.myGoals = myGoals;
         req.oppGoals = oppGoals;
-
         ApiClient.getService().getDecision(req).enqueue(new Callback<DecisionResponse>() {
             @Override public void onResponse(Call<DecisionResponse> c, retrofit2.Response<DecisionResponse> r) {
                 if (r.isSuccessful() && r.body() != null) strategy = r.body();
@@ -309,21 +362,16 @@ public class MyAccessibilityBotService extends AccessibilityService {
         });
     }
 
-    // ===================== HARAKAT (anti-mexanik) =====================
     private void actByStrategy(BotSettings s) {
         long now = System.currentTimeMillis();
         long minGap = Humanizer.randomDelay(180, 420);
         if (now - lastActionTime < minGap) return;
-        if (Humanizer.shouldHesitate(0.07)) {
-            lastActionTime = now + Humanizer.hesitationPause();
-            return;
-        }
+        if (Humanizer.shouldHesitate(0.07)) { lastActionTime = now + Humanizer.hesitationPause(); return; }
         lastActionTime = now;
 
         int sw = BotState.get().screenWidth, sh = BotState.get().screenHeight;
         boolean attackRight = s.attackRight;
         String action = (strategy != null) ? strategy.action : "SURISH";
-
         ButtonCoord shoot = s.findButton("A_shoot");
         ButtonCoord pass = s.findButton("B_pass");
         ButtonCoord joy = s.findButton("joystick");
@@ -354,6 +402,16 @@ public class MyAccessibilityBotService extends AccessibilityService {
                 });
     }
 
+    private void reportLog(String level, String message) {
+        try {
+            ApiClient.getService().reportLog(new LogRequest(MATCH_ID, level, message))
+                    .enqueue(new Callback<Void>() {
+                        @Override public void onResponse(Call<Void> c, retrofit2.Response<Void> r) { }
+                        @Override public void onFailure(Call<Void> c, Throwable t) { }
+                    });
+        } catch (Exception ignored) {}
+    }
+
     private void joystickSwipe(ButtonCoord joy, boolean toRight, BotSettings s, int sw, int sh) {
         float jx = joy.x * sw, jy = joy.y * sh;
         float radius = s.joystickRadius * sw;
@@ -362,8 +420,7 @@ public class MyAccessibilityBotService extends AccessibilityService {
     }
 
     private void humanTap(float x, float y, int sw, int sh) {
-        Path path = Humanizer.humanTapPath(
-                Humanizer.clamp(x, 1, sw - 1), Humanizer.clamp(y, 1, sh - 1), JITTER_PX);
+        Path path = Humanizer.humanTapPath(Humanizer.clamp(x, 1, sw - 1), Humanizer.clamp(y, 1, sh - 1), JITTER_PX);
         dispatchPath(path, Humanizer.microTapDuration());
     }
 
@@ -378,27 +435,61 @@ public class MyAccessibilityBotService extends AccessibilityService {
         try {
             GestureDescription.StrokeDescription stroke =
                     new GestureDescription.StrokeDescription(path, 0, Math.max(10, durationMs));
-            GestureDescription gesture = new GestureDescription.Builder().addStroke(stroke).build();
-            dispatchGesture(gesture, null, botHandler);
+            dispatchGesture(new GestureDescription.Builder().addStroke(stroke).build(), null, botHandler);
         } catch (Exception e) {
             Log.e(TAG, "dispatchGesture xato: " + e.getMessage());
         }
     }
 
-    private void pushDebug(Vision.Match ball, int pw, int ph, BotSettings s) {
+    // #47: Qizish nazorati — telefon qizib ketsa, sekinlashtiramiz
+    private void heatThrottle(BotSettings s) {
+        long now = System.currentTimeMillis();
+        if (now - lastHeatCheck < 5000) return;
+        lastHeatCheck = now;
+        try {
+            Intent bat = registerReceiver(null, new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
+            if (bat != null) {
+                int t = bat.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 0);
+                float celsius = t / 10.0f;
+                heatExtraDelay = (s != null && celsius >= s.heatThrottleC) ? 250 : 0;
+                if (heatExtraDelay > 0) Log.w(TAG, "Telefon qizigan (" + celsius + "C) -> sekinlashtirildi");
+            }
+        } catch (Exception ignored) {}
+    }
+
+    private void updateFps() {
+        frameCount++;
+        long now = System.currentTimeMillis();
+        if (now - lastFpsTime >= 1000) {
+            fps = frameCount * 1000f / (now - lastFpsTime);
+            frameCount = 0;
+            lastFpsTime = now;
+        }
+    }
+
+    private void pushDebug(Vision.Match ball, BotSettings s) {
         DebugOverlay dbg = DebugOverlay.getInstance();
         if (dbg == null) return;
         int sw = BotState.get().screenWidth, sh = BotState.get().screenHeight;
         float bx = -1, by = -1;
         boolean found = ball != null;
-        if (found) { bx = ball.cx / pw * sw; by = ball.cy / ph * sh; }
+        if (found) { bx = ball.cx / s.processWidth * sw; by = ball.cy / s.processHeight * sh; }
         String act = (strategy != null) ? strategy.action : "-";
         String md = (strategy != null && strategy.mode != null) ? strategy.mode : "-";
         float conf = (strategy != null) ? strategy.confidence : 0f;
         dbg.update(bx, by, found, act, md, gameState, conf, myGoals, oppGoals, fps);
     }
 
-    @Override public void onAccessibilityEvent(AccessibilityEvent event) { }
+    @Override
+    public void onAccessibilityEvent(AccessibilityEvent event) {
+        // #49: Oldindagi ilova paketini kuzatamiz (o'zimizni hisobga olmaymiz)
+        if (event == null || event.getPackageName() == null) return;
+        String pkg = event.getPackageName().toString();
+        if (!pkg.equals(getPackageName())) {
+            currentPackage = pkg;
+        }
+    }
+
     @Override public void onInterrupt() { stopBot(); }
 
     @Override

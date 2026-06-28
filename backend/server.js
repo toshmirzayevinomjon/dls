@@ -42,6 +42,12 @@ const SETTINGS = {
     roi: { x: 0.10, y: 0.12, w: 0.80, h: 0.76 },
     // #3 multi-scale: to'pni shu o'lchamlarda qidiramiz
     scales: [0.8, 1.0, 1.2],
+    // Avtonom navigatsiya
+    packageNames: ["com.firsttouchgames.dls7", "com.firsttouchgames.dls8", "com.firsttouchgames.dls"],
+    navThreshold: 0.78,
+    relaunchAfterMs: 12000,
+    maxBackTries: 4,
+    heatThrottleC: 42.0,
     buttons: [
         { name: "A_shoot", x: 0.90, y: 0.78 },
         { name: "B_pass",  x: 0.82, y: 0.88 },
@@ -56,7 +62,9 @@ const TEMPLATES = [
     { name: "control_indicator", url: `${BASE_URL}/templates/control_indicator.png` }, // #2 boshqaruvdagi o'yinchi belgisi
     { name: "goal_banner",       url: `${BASE_URL}/templates/goal_banner.png` },        // bizning gol
     { name: "concede_banner",    url: `${BASE_URL}/templates/concede_banner.png` },     // #6 raqib goli
-    { name: "play_button",       url: `${BASE_URL}/templates/play_button.png` }         // #7 menyu holati
+    { name: "play_button",       url: `${BASE_URL}/templates/play_button.png` },        // #7 menyu: PLAY
+    { name: "continue_button",   url: `${BASE_URL}/templates/continue_button.png` },    // match tugadi: Continue
+    { name: "ok_button",         url: `${BASE_URL}/templates/ok_button.png` }           // popup: OK/Yopish
 ];
 
 // ====================== #9 TAKTIKA PROFILLARI ======================
@@ -195,6 +203,13 @@ app.post('/api/bot/stats', (req, res) => {
 app.get('/api/bot/stats/:matchId', (req, res) => {
     const all = loadStats();
     res.json(all[req.params.matchId] || { error: 'topilmadi' });
+});
+
+// #50 Ilovadan crash/xato loglarini qabul qilish
+app.post('/api/bot/log', (req, res) => {
+    const { matchId = 'default', level = 'INFO', message = '' } = req.body || {};
+    console.log(`[BOT-LOG][${level}][${matchId}] ${message}`);
+    res.json({ ok: true });
 });
 
 app.post('/api/bot/decision', async (req, res) => {
