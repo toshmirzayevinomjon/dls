@@ -17,6 +17,8 @@ if (!GROQ_API_KEY) {
 
 app.use(express.json());
 app.use('/templates', express.static(path.join(__dirname, 'templates')));
+// Yuklab olish sayti (landing page) va APK fayli shu papkadan beriladi
+app.use(express.static(path.join(__dirname, 'public')));
 
 const BASE_URL = process.env.BASE_URL || `http://192.168.1.100:${PORT}`;
 const STATS_FILE = path.join(__dirname, 'stats.json');

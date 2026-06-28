@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="uz">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DLS Bot — Yuklab olish</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, "Segoe UI", Roboto, sans-serif;
+            background: linear-gradient(135deg, #0f2027, #203a43, #2c5364);
+            color: #fff; min-height: 100vh;
+            display: flex; align-items: center; justify-content: center; padding: 20px;
+        }
+        .card {
+            background: rgba(255,255,255,0.07);
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: 20px; padding: 36px 28px; max-width: 440px; width: 100%;
+            backdrop-filter: blur(10px); text-align: center;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+        }
+        .logo { font-size: 54px; margin-bottom: 8px; }
+        h1 { font-size: 26px; margin-bottom: 6px; }
+        .sub { color: #9fd3c7; font-size: 14px; margin-bottom: 24px; }
+        .status {
+            display: inline-block; font-size: 13px; padding: 5px 14px; border-radius: 20px;
+            margin-bottom: 24px; background: rgba(255,255,255,0.1);
+        }
+        .dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%;
+               background: #aaa; margin-right: 6px; vertical-align: middle; }
+        .dot.on { background: #4caf50; box-shadow: 0 0 8px #4caf50; }
+        .dot.off { background: #e53935; }
+        .btn {
+            display: block; width: 100%; padding: 16px; border: none; border-radius: 14px;
+            font-size: 17px; font-weight: 700; cursor: pointer; text-decoration: none;
+            background: linear-gradient(90deg, #00b09b, #96c93d); color: #03241f;
+            margin-bottom: 14px; transition: transform .12s;
+        }
+        .btn:active { transform: scale(0.97); }
+        .btn.secondary { background: rgba(255,255,255,0.12); color: #fff; }
+        .meta { font-size: 12px; color: #9fd3c7; margin-bottom: 24px; }
+        .steps { text-align: left; font-size: 14px; line-height: 1.7; }
+        .steps h3 { font-size: 15px; margin: 20px 0 8px; color: #96c93d; }
+        .steps ol { padding-left: 20px; color: #d4e9e2; }
+        .warn { margin-top: 22px; font-size: 12px; color: #ffcc80;
+                background: rgba(255,152,0,0.1); padding: 10px 12px; border-radius: 10px; }
+        .footer { margin-top: 22px; font-size: 11px; color: #6f93a0; }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <div class="logo">⚽</div>
+        <h1>DLS Bot</h1>
+        <div class="sub">Dream League Soccer — offline AI bot</div>
+
+        <div class="status">
+            <span id="dot" class="dot"></span><span id="statusText">Server tekshirilmoqda...</span>
+        </div>
+
+        <a class="btn" id="downloadBtn" href="/downloads/dls-bot.apk" download>⬇️ APK yuklab olish</a>
+        <a class="btn secondary" href="https://github.com/toshmirzayevinomjon/dls" target="_blank">📦 Manba kodi (GitHub)</a>
+        <div class="meta" id="apkMeta">Versiya 1.0 · Android 7.0+</div>
+
+        <div class="steps">
+            <h3>O'rnatish</h3>
+            <ol>
+                <li>APK'ni yuklab oling va oching.</li>
+                <li>"Noma'lum manbalar" (Unknown sources) ruxsatini bering.</li>
+                <li>O'rnating va ilovani oching.</li>
+                <li>Ketma-ket: <b>Overlay → Accessibility → Ekran olish</b> ruxsatlarini yoqing.</li>
+                <li>O'yinni oching, <b>CALIB</b> bilan kalibrlang, <b>START</b> bosing.</li>
+            </ol>
+        </div>
+
+        <div class="warn">
+            ⚠️ Faqat <b>offline</b> (botga qarshi) rejim uchun. Online o'yinda ishlatish tavsiya etilmaydi.
+        </div>
+
+        <div class="footer">DLS Bot · OpenCV + Groq AI</div>
+    </div>
+
+    <script>
+        // Server holatini ko'rsatamiz
+        fetch('/health').then(r => r.json()).then(d => {
+            document.getElementById('dot').className = 'dot on';
+            document.getElementById('statusText').textContent = 'Server faol · ' + (d.model || '');
+        }).catch(() => {
+            document.getElementById('dot').className = 'dot off';
+            document.getElementById('statusText').textContent = 'Server o\'chiq';
+        });
+
+        // APK mavjudligini tekshiramiz
+        fetch('/downloads/dls-bot.apk', { method: 'HEAD' }).then(r => {
+            if (!r.ok) throw new Error();
+            const size = r.headers.get('content-length');
+            if (size) {
+                const mb = (parseInt(size) / (1024 * 1024)).toFixed(1);
+                document.getElementById('apkMeta').textContent = 'Versiya 1.0 · ' + mb + ' MB · Android 7.0+';
+            }
+        }).catch(() => {
+            const btn = document.getElementById('downloadBtn');
+            btn.textContent = '⏳ APK hali yuklanmagan';
+            btn.style.opacity = '0.6';
+            btn.style.pointerEvents = 'none';
+            document.getElementById('apkMeta').textContent = 'APK fayli backend/public/downloads/ ga qo\'yilishi kerak';
+        });
+    </script>
+</body>
+</html>
