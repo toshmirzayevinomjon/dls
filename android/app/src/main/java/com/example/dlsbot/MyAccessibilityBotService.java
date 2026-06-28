@@ -5,6 +5,7 @@ import android.accessibilityservice.GestureDescription;
 import android.content.Intent;
 import android.content.IntentFilter;
 import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Path;
 import android.os.BatteryManager;
 import android.os.Handler;
@@ -12,16 +13,9 @@ import android.os.HandlerThread;
 import android.util.Log;
 import android.view.accessibility.AccessibilityEvent;
 
-import com.example.dlsbot.net.ApiClient;
 import com.example.dlsbot.net.BotSettings;
 import com.example.dlsbot.net.ButtonCoord;
-import com.example.dlsbot.net.DecisionRequest;
 import com.example.dlsbot.net.DecisionResponse;
-import com.example.dlsbot.net.LogRequest;
-import com.example.dlsbot.net.ScoreRequest;
-import com.example.dlsbot.net.ScoreResponse;
-import com.example.dlsbot.net.StatsRequest;
-import com.example.dlsbot.net.TemplateItem;
 
 import org.opencv.android.OpenCVLoader;
 import org.opencv.android.Utils;
@@ -31,18 +25,16 @@ import org.opencv.core.Rect;
 import org.opencv.core.Size;
 import org.opencv.imgproc.Imgproc;
 
-import java.io.InputStream;
+import java.io.File;
 import java.util.List;
 
-import okhttp3.Request;
-import okhttp3.Response;
-import retrofit2.Call;
-import retrofit2.Callback;
-
+/**
+ * Standalone DLS bot — SERVER KERAK EMAS.
+ * Sozlama: Defaults, Qaror: LocalStrategy, Shablon: telefon ichidan (filesDir/templates).
+ */
 public class MyAccessibilityBotService extends AccessibilityService {
 
     private static final String TAG = "DLSBot";
-    private static final String MATCH_ID = "default";
     private static final int JITTER_PX = 10;
     private static final long GOAL_DEBOUNCE_MS = 8000;
 
@@ -54,13 +46,11 @@ public class MyAccessibilityBotService extends AccessibilityService {
     private volatile boolean loopActive = false;
 
     private volatile DecisionResponse strategy;
-    private long lastStrategyTime = 0;
     private long lastActionTime = 0;
 
     private int myGoals = 0, oppGoals = 0;
     private long lastGoalTime = 0, lastConcedeTime = 0;
 
-    // Navigatsiya holati
     private String gameState = "NOMA'LUM";
     private volatile String currentPackage = "";
     private long lastInMatchTime = 0;
@@ -68,7 +58,6 @@ public class MyAccessibilityBotService extends AccessibilityService {
     private long lastBackTime = 0;
     private int backPressCount = 0;
 
-    // FPS va qizish
     private long lastFpsTime = 0;
     private int frameCount = 0;
     private float fps = 0f;
@@ -92,13 +81,23 @@ public class MyAccessibilityBotService extends AccessibilityService {
 
     public void startBot() {
         if (loopActive) return;
+        // Sozlama va shablonlarni telefon ichidan yuklaymiz (server yo'q)
+        BotSettings s = Defaults.buildSettings(this);
+        BotState.get().settings = s;
+        loadLocalTemplates(s);
+
+        if (BotState.get().templates.isEmpty()) {
+            android.widget.Toast.makeText(this,
+                    "Avval 'Shablon ol' bilan kamida TO'P rasmini oling!",
+                    android.widget.Toast.LENGTH_LONG).show();
+        }
+
         loopActive = true;
         BotState.get().running.set(true);
         myGoals = 0; oppGoals = 0;
         backPressCount = 0;
         lastInMatchTime = System.currentTimeMillis();
-        reportScore("RESET");
-        botHandler.post(this::initThenLoop);
+        botHandler.post(this::tick);
     }
 
     public void stopBot() {
@@ -107,31 +106,23 @@ public class MyAccessibilityBotService extends AccessibilityService {
         Log.i(TAG, "Bot to'xtatildi");
     }
 
-    private void initThenLoop() {
-        try {
-            loadSettings();
-            loadTemplates();
-        } catch (Exception e) {
-            Log.e(TAG, "Server yuklash: " + e.getMessage());
-        }
-        if (BotState.get().settings == null) {
-            Log.e(TAG, "Sozlama yo'q -> to'xtaymiz");
-            stopBot();
+    // Shablonlarni telefon ichidan o'qiymiz va ishlov o'lchamiga (640x360) moslaymiz
+    private void loadLocalTemplates(BotSettings s) {
+        BotState.get().templates.clear();
+        File dir = new File(getFilesDir(), "templates");
+        if (!dir.exists()) {
+            Log.e(TAG, "Shablon papkasi yo'q — 'Shablon ol' qiling");
             return;
         }
-        tick();
-    }
+        int sw = BotState.get().screenWidth, sh = BotState.get().screenHeight;
+        if (sw <= 0 || sh <= 0) return;
+        float sx = (float) s.processWidth / sw;
+        float sy = (float) s.processHeight / sh;
 
-    private void loadSettings() throws Exception {
-        retrofit2.Response<BotSettings> r = ApiClient.getService().getSettings().execute();
-        if (r.isSuccessful() && r.body() != null) BotState.get().settings = r.body();
-    }
-
-    private void loadTemplates() throws Exception {
-        retrofit2.Response<TemplateItem.Response> r = ApiClient.getService().getTemplates().execute();
-        if (!r.isSuccessful() || r.body() == null || r.body().templates == null) return;
-        for (TemplateItem item : r.body().templates) {
-            Bitmap bmp = downloadBitmap(item.url);
+        for (String name : Defaults.TEMPLATE_NAMES) {
+            File f = new File(dir, name + ".png");
+            if (!f.exists()) continue;
+            Bitmap bmp = BitmapFactory.decodeFile(f.getAbsolutePath());
             if (bmp == null) continue;
             Mat color = new Mat();
             Utils.bitmapToMat(bmp, color);
@@ -139,22 +130,13 @@ public class MyAccessibilityBotService extends AccessibilityService {
             Mat gray = new Mat();
             Imgproc.cvtColor(color, gray, Imgproc.COLOR_RGBA2GRAY);
             color.release();
-            BotState.get().templates.put(item.name, gray);
-            Log.i(TAG, "Shablon: " + item.name);
-        }
-    }
-
-    private Bitmap downloadBitmap(String url) {
-        try {
-            Request req = new Request.Builder().url(url).build();
-            try (Response resp = ApiClient.rawHttpClient().newCall(req).execute()) {
-                if (!resp.isSuccessful() || resp.body() == null) return null;
-                InputStream is = resp.body().byteStream();
-                return android.graphics.BitmapFactory.decodeStream(is);
-            }
-        } catch (Exception e) {
-            Log.e(TAG, "Rasm yuklash xato: " + e.getMessage());
-            return null;
+            int tw = Math.max(1, Math.round(gray.cols() * sx));
+            int th = Math.max(1, Math.round(gray.rows() * sy));
+            Mat scaled = new Mat();
+            Imgproc.resize(gray, scaled, new Size(tw, th));
+            gray.release();
+            BotState.get().templates.put(name, scaled);
+            Log.i(TAG, "Shablon yuklandi: " + name + " " + tw + "x" + th);
         }
     }
 
@@ -175,7 +157,6 @@ public class MyAccessibilityBotService extends AccessibilityService {
             heatThrottle(s);
         } catch (Throwable t) {
             Log.e(TAG, "Sikl xato: " + t.getMessage());
-            reportLog("ERROR", "tick: " + t);
         }
         long base = (s != null) ? s.loopIntervalMs : 130;
         long next = Humanizer.randomDelay(base, base + 70);
@@ -199,7 +180,6 @@ public class MyAccessibilityBotService extends AccessibilityService {
     private void navigateAndPlay(Mat small, BotSettings s) {
         long now = System.currentTimeMillis();
 
-        // #49: O'yin oldinda emasmi? -> ochishga harakat qilamiz
         if (!isTargetGame(currentPackage)) {
             gameState = "O'YIN OCHIQ EMAS";
             if (now - lastLaunchTime > s.relaunchAfterMs) {
@@ -210,17 +190,12 @@ public class MyAccessibilityBotService extends AccessibilityService {
             return;
         }
 
-        // Match tugadi / popup -> davom ettirish tugmasini bosamiz
         if (tapIfFound(small, "continue_button", s)) { gameState = "MATCH TUGADI"; lastInMatchTime = now; return; }
         if (tapIfFound(small, "ok_button", s)) { gameState = "OYNA"; lastInMatchTime = now; return; }
-
-        // Menyu -> PLAY bosib matchga kiramiz
         if (tapIfFound(small, "play_button", s)) { gameState = "MENYU"; lastInMatchTime = now; backPressCount = 0; return; }
 
-        // Gollarni tekshiramiz
         detectGoals(small, s);
 
-        // To'p bormi? -> o'yin ichidamiz
         Rect roi = Vision.roiFromSettings(s);
         Vision.Match ball = Vision.matchMultiScale(
                 small, BotState.get().templates.get("ball"), s.matchThreshold, s.scales, roi);
@@ -234,32 +209,25 @@ public class MyAccessibilityBotService extends AccessibilityService {
             return;
         }
 
-        // Hech narsa tanilmadi -> noto'g'ri/noma'lum ekran -> chiqishga harakat
         gameState = "NOMA'LUM EKRAN";
         handleUnknownScreen(now, s);
         pushDebug(null, s);
     }
 
-    // #46: Noma'lum ekrandan chiqish (Back -> bo'lmasa qayta ishga tushirish)
     private void handleUnknownScreen(long now, BotSettings s) {
-        long stuck = now - lastInMatchTime;
         if (now - lastBackTime < 1600) return;
         lastBackTime = now;
-
         if (backPressCount < s.maxBackTries) {
             performGlobalAction(GLOBAL_ACTION_BACK);
             backPressCount++;
             Log.i(TAG, "Noma'lum ekran -> BACK (" + backPressCount + ")");
         } else {
-            // Back yordam bermadi -> o'yinni qaytadan ochamiz
             backPressCount = 0;
-            Log.i(TAG, "Ko'p marta BACK -> o'yin qayta ochiladi");
+            Log.i(TAG, "BACK yordam bermadi -> o'yin qayta ochiladi");
             launchGame(s);
         }
-        if (stuck > 60000) reportLog("WARN", "60s o'yin ichiga kira olmadi");
     }
 
-    // O'yinni ishga tushirish (paket nomlari ro'yxati bo'yicha)
     private void launchGame(BotSettings s) {
         List<String> pkgs = s.packageNames;
         if (pkgs == null) return;
@@ -289,7 +257,6 @@ public class MyAccessibilityBotService extends AccessibilityService {
         return false;
     }
 
-    // Shablon topilsa, uni bosadi (navigatsiya tugmalari uchun)
     private boolean tapIfFound(Mat small, String name, BotSettings s) {
         Mat t = BotState.get().templates.get(name);
         if (t == null) return false;
@@ -301,7 +268,7 @@ public class MyAccessibilityBotService extends AccessibilityService {
         return true;
     }
 
-    // ===================== FUTBOL O'YINI =====================
+    // ===================== FUTBOL O'YINI (lokal qaror) =====================
     private void playFootball(Mat small, Vision.Match ball, BotSettings s, Rect roi) {
         boolean hasBall;
         Vision.Match ctrl = Vision.matchMultiScale(
@@ -312,8 +279,8 @@ public class MyAccessibilityBotService extends AccessibilityService {
         } else {
             hasBall = ball.score > (s.matchThreshold + 0.08f);
         }
-        float bx = ball.cx / s.processWidth, by = ball.cy / s.processHeight;
-        maybeUpdateStrategy(bx, by, hasBall, s.attackRight);
+        float bx = ball.cx / s.processWidth;
+        strategy = LocalStrategy.decide(bx, hasBall, s.attackRight, myGoals);
         actByStrategy(s);
     }
 
@@ -322,44 +289,12 @@ public class MyAccessibilityBotService extends AccessibilityService {
         float th = Math.max(0.75f, s.matchThreshold + 0.13f);
         if (now - lastGoalTime >= GOAL_DEBOUNCE_MS) {
             Vision.Match g = Vision.matchSingle(small, BotState.get().templates.get("goal_banner"), th, null);
-            if (g != null) { lastGoalTime = now; myGoals++; Log.i(TAG, "BIZNING GOL! " + myGoals); reportScore("MY_GOAL"); }
+            if (g != null) { lastGoalTime = now; myGoals++; Log.i(TAG, "BIZNING GOL! " + myGoals); }
         }
         if (now - lastConcedeTime >= GOAL_DEBOUNCE_MS) {
             Vision.Match c = Vision.matchSingle(small, BotState.get().templates.get("concede_banner"), th, null);
-            if (c != null) { lastConcedeTime = now; oppGoals++; Log.i(TAG, "RAQIB GOL! " + oppGoals); reportScore("OPP_GOAL"); }
+            if (c != null) { lastConcedeTime = now; oppGoals++; Log.i(TAG, "RAQIB GOL! " + oppGoals); }
         }
-    }
-
-    private void reportScore(String event) {
-        ApiClient.getService().reportScore(new ScoreRequest(MATCH_ID, event))
-                .enqueue(new Callback<ScoreResponse>() {
-                    @Override public void onResponse(Call<ScoreResponse> c, retrofit2.Response<ScoreResponse> r) {
-                        if (r.isSuccessful() && r.body() != null) { myGoals = r.body().myGoals; oppGoals = r.body().oppGoals; }
-                    }
-                    @Override public void onFailure(Call<ScoreResponse> c, Throwable t) { }
-                });
-    }
-
-    private void maybeUpdateStrategy(float bx, float by, boolean hasBall, boolean attackRight) {
-        long now = System.currentTimeMillis();
-        if (now - lastStrategyTime < 1500) return;
-        lastStrategyTime = now;
-        DecisionRequest req = new DecisionRequest();
-        req.matchId = MATCH_ID;
-        req.profile = BotState.get().profile;
-        req.ball = new DecisionRequest.Coord(bx, by);
-        req.oppGoal = new DecisionRequest.Coord(attackRight ? 0.95f : 0.05f, 0.5f);
-        req.ownGoal = new DecisionRequest.Coord(attackRight ? 0.05f : 0.95f, 0.5f);
-        req.hasBall = hasBall;
-        req.attackRight = attackRight;
-        req.myGoals = myGoals;
-        req.oppGoals = oppGoals;
-        ApiClient.getService().getDecision(req).enqueue(new Callback<DecisionResponse>() {
-            @Override public void onResponse(Call<DecisionResponse> c, retrofit2.Response<DecisionResponse> r) {
-                if (r.isSuccessful() && r.body() != null) strategy = r.body();
-            }
-            @Override public void onFailure(Call<DecisionResponse> c, Throwable t) { }
-        });
     }
 
     private void actByStrategy(BotSettings s) {
@@ -378,10 +313,10 @@ public class MyAccessibilityBotService extends AccessibilityService {
 
         switch (action) {
             case "ZARBA":
-                if (shoot != null) { humanTap(shoot.x * sw, shoot.y * sh, sw, sh); reportStats("ZARBA"); }
+                if (shoot != null) humanTap(shoot.x * sw, shoot.y * sh, sw, sh);
                 break;
             case "PAS":
-                if (pass != null) { humanTap(pass.x * sw, pass.y * sh, sw, sh); reportStats("PAS"); }
+                if (pass != null) humanTap(pass.x * sw, pass.y * sh, sw, sh);
                 break;
             case "HIMOYA":
                 if (joy != null) joystickSwipe(joy, !attackRight, s, sw, sh);
@@ -392,24 +327,6 @@ public class MyAccessibilityBotService extends AccessibilityService {
                 if (joy != null) joystickSwipe(joy, attackRight, s, sw, sh);
                 break;
         }
-    }
-
-    private void reportStats(String action) {
-        ApiClient.getService().reportStats(new StatsRequest(MATCH_ID, action))
-                .enqueue(new Callback<Void>() {
-                    @Override public void onResponse(Call<Void> c, retrofit2.Response<Void> r) { }
-                    @Override public void onFailure(Call<Void> c, Throwable t) { }
-                });
-    }
-
-    private void reportLog(String level, String message) {
-        try {
-            ApiClient.getService().reportLog(new LogRequest(MATCH_ID, level, message))
-                    .enqueue(new Callback<Void>() {
-                        @Override public void onResponse(Call<Void> c, retrofit2.Response<Void> r) { }
-                        @Override public void onFailure(Call<Void> c, Throwable t) { }
-                    });
-        } catch (Exception ignored) {}
     }
 
     private void joystickSwipe(ButtonCoord joy, boolean toRight, BotSettings s, int sw, int sh) {
@@ -441,7 +358,6 @@ public class MyAccessibilityBotService extends AccessibilityService {
         }
     }
 
-    // #47: Qizish nazorati — telefon qizib ketsa, sekinlashtiramiz
     private void heatThrottle(BotSettings s) {
         long now = System.currentTimeMillis();
         if (now - lastHeatCheck < 5000) return;
@@ -452,7 +368,7 @@ public class MyAccessibilityBotService extends AccessibilityService {
                 int t = bat.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 0);
                 float celsius = t / 10.0f;
                 heatExtraDelay = (s != null && celsius >= s.heatThrottleC) ? 250 : 0;
-                if (heatExtraDelay > 0) Log.w(TAG, "Telefon qizigan (" + celsius + "C) -> sekinlashtirildi");
+                if (heatExtraDelay > 0) Log.w(TAG, "Qizigan (" + celsius + "C) -> sekinlashtirildi");
             }
         } catch (Exception ignored) {}
     }
@@ -482,12 +398,9 @@ public class MyAccessibilityBotService extends AccessibilityService {
 
     @Override
     public void onAccessibilityEvent(AccessibilityEvent event) {
-        // #49: Oldindagi ilova paketini kuzatamiz (o'zimizni hisobga olmaymiz)
         if (event == null || event.getPackageName() == null) return;
         String pkg = event.getPackageName().toString();
-        if (!pkg.equals(getPackageName())) {
-            currentPackage = pkg;
-        }
+        if (!pkg.equals(getPackageName())) currentPackage = pkg;
     }
 
     @Override public void onInterrupt() { stopBot(); }

@@ -86,6 +86,13 @@ public class FloatingOverlayService extends Service {
             new CalibrationOverlay(this).start();
         });
 
+        Button btnTpl = makeButton("Shablon ol", "#EF6C00");
+        btnTpl.setOnClickListener(v -> {
+            MyAccessibilityBotService bot = MyAccessibilityBotService.getInstance();
+            if (bot != null) bot.stopBot();
+            new CaptureTemplateOverlay(this).start();
+        });
+
         btnProfile = makeButton("Profil: " + profileLabels[profileIndex], "#6A1B9A");
         btnProfile.setOnClickListener(v -> {
             profileIndex = (profileIndex + 1) % profiles.length;
@@ -107,6 +114,7 @@ public class FloatingOverlayService extends Service {
         overlayView.addView(btnStart);
         overlayView.addView(btnStop);
         overlayView.addView(btnCalib);
+        overlayView.addView(btnTpl);
         overlayView.addView(btnProfile);
         overlayView.addView(btnSpeed);
 

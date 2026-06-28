@@ -110,18 +110,10 @@ public class CalibrationOverlay {
     }
 
     private void finish() {
-        prompt.setText("Saqlanmoqda...");
-        ApiClient.getService().saveCalibration(new CalibrationRequest(result))
-                .enqueue(new Callback<Void>() {
-                    @Override public void onResponse(Call<Void> c, Response<Void> r) {
-                        Toast.makeText(ctx, "Kalibrlash saqlandi", Toast.LENGTH_LONG).show();
-                        close();
-                    }
-                    @Override public void onFailure(Call<Void> c, Throwable t) {
-                        Toast.makeText(ctx, "Saqlash xato: " + t.getMessage(), Toast.LENGTH_LONG).show();
-                        close();
-                    }
-                });
+        // Telefon ichiga saqlaymiz (server kerak emas)
+        LocalConfig.saveButtons(ctx, result);
+        Toast.makeText(ctx, "Kalibrlash saqlandi", Toast.LENGTH_LONG).show();
+        close();
     }
 
     private void close() {
