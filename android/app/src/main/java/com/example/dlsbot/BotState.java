@@ -36,6 +36,9 @@ public final class BotState {
     // #41 tezlik koeffitsienti: fast=0.6, normal=1.0, slow=1.6
     public volatile float speedFactor = 1.0f;
 
+    // #8 avtomatik rejim: DLS ochilsa botni o'zi START qilsin
+    public volatile boolean autoMode = false;
+
     public synchronized void setLatestFrame(Bitmap bmp) {
         this.latestFrame = bmp;
     }
@@ -49,7 +52,8 @@ public final class BotState {
     public final Map<String, Mat> templates = new HashMap<>();
 
     public synchronized boolean isReady() {
-        return settings != null && !templates.isEmpty()
+        // Shablon majburiy emas — to'p rang/shakl bo'yicha ham topiladi (#9)
+        return settings != null
                 && mediaProjection != null
                 && screenWidth > 0 && screenHeight > 0;
     }

@@ -109,6 +109,42 @@ public final class Vision {
         return new Rect(x, y, w, h);
     }
 
+    // #9/#10 — To'pni SHABLONSIZ topish: dumaloq (oq) shaklni HoughCircles bilan aniqlash
+    public static Match detectBallByColor(Mat sceneGray, Rect roi) {
+        Mat area = sceneGray;
+        int offX = 0, offY = 0;
+        Mat roiMat = null;
+        if (roi != null) {
+            Rect safe = clampRect(roi, sceneGray.cols(), sceneGray.rows());
+            if (safe.width <= 0 || safe.height <= 0) return null;
+            roiMat = new Mat(sceneGray, safe);
+            area = roiMat;
+            offX = safe.x;
+            offY = safe.y;
+        }
+
+        Mat blurred = new Mat();
+        Imgproc.medianBlur(area, blurred, 5);
+        Mat circles = new Mat();
+        // param: dp=1, minDist=20, Canny=100, accum=18, minR=3, maxR=16
+        Imgproc.HoughCircles(blurred, circles, Imgproc.HOUGH_GRADIENT,
+                1.0, 20, 100, 18, 3, 16);
+
+        Match best = null;
+        if (!circles.empty() && circles.cols() > 0) {
+            double[] c = circles.get(0, 0); // x, y, r
+            if (c != null && c.length >= 2) {
+                float cx = (float) (offX + c[0]);
+                float cy = (float) (offY + c[1]);
+                best = new Match(cx, cy, 0.75f, 1.0f);
+            }
+        }
+        blurred.release();
+        circles.release();
+        if (roiMat != null) roiMat.release();
+        return best;
+    }
+
     // #2 yordamchi: ikki nuqta orasidagi masofa (piksel)
     public static float distance(float x1, float y1, float x2, float y2) {
         float dx = x1 - x2, dy = y1 - y2;

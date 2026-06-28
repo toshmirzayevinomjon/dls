@@ -76,6 +76,13 @@ public class MyAccessibilityBotService extends AccessibilityService {
         botThread = new HandlerThread("BotLogicThread");
         botThread.start();
         botHandler = new Handler(botThread.getLooper());
+
+        // #1 Sozlama va o'rnatilgan DLS paketini oldindan tayyorlaymiz (auto-start uchun ham kerak)
+        BotSettings s = Defaults.buildSettings(this);
+        List<String> dls = AppUtil.detectInstalledDls(this, s.packageNames);
+        if (!dls.isEmpty()) s.packageNames = dls;
+        BotState.get().settings = s;
+        Log.i(TAG, "Aniqlangan DLS paketlari: " + dls);
         Log.i(TAG, "Accessibility ulandi");
     }
 
@@ -83,14 +90,11 @@ public class MyAccessibilityBotService extends AccessibilityService {
         if (loopActive) return;
         // Sozlama va shablonlarni telefon ichidan yuklaymiz (server yo'q)
         BotSettings s = Defaults.buildSettings(this);
+        List<String> dls = AppUtil.detectInstalledDls(this, s.packageNames);
+        if (!dls.isEmpty()) s.packageNames = dls;
         BotState.get().settings = s;
         loadLocalTemplates(s);
-
-        if (BotState.get().templates.isEmpty()) {
-            android.widget.Toast.makeText(this,
-                    "Avval 'Shablon ol' bilan kamida TO'P rasmini oling!",
-                    android.widget.Toast.LENGTH_LONG).show();
-        }
+        // To'p shabloni bo'lmasa ham — rang/shakl bo'yicha topiladi (#9), to'xtatmaymiz
 
         loopActive = true;
         BotState.get().running.set(true);
@@ -197,8 +201,12 @@ public class MyAccessibilityBotService extends AccessibilityService {
         detectGoals(small, s);
 
         Rect roi = Vision.roiFromSettings(s);
-        Vision.Match ball = Vision.matchMultiScale(
-                small, BotState.get().templates.get("ball"), s.matchThreshold, s.scales, roi);
+        Mat ballTmpl = BotState.get().templates.get("ball");
+        Vision.Match ball = (ballTmpl != null)
+                ? Vision.matchMultiScale(small, ballTmpl, s.matchThreshold, s.scales, roi)
+                : null;
+        // #9 Shablon bo'lmasa yoki topilmasa -> rang/shakl bo'yicha qidiramiz
+        if (ball == null) ball = Vision.detectBallByColor(small, roi);
 
         if (ball != null) {
             gameState = "O'YINDA";
@@ -369,6 +377,20 @@ public class MyAccessibilityBotService extends AccessibilityService {
                 float celsius = t / 10.0f;
                 heatExtraDelay = (s != null && celsius >= s.heatThrottleC) ? 250 : 0;
                 if (heatExtraDelay > 0) Log.w(TAG, "Qizigan (" + celsius + "C) -> sekinlashtirildi");
+
+                // #38 Batareya juda kam va quvvatlanmayotgan bo'lsa -> to'xtatamiz
+                int level = bat.getIntExtra(BatteryManager.EXTRA_LEVEL, -1);
+                int scale = bat.getIntExtra(BatteryManager.EXTRA_SCALE, 100);
+                int status = bat.getIntExtra(BatteryManager.EXTRA_STATUS, -1);
+                boolean charging = status == BatteryManager.BATTERY_STATUS_CHARGING
+                        || status == BatteryManager.BATTERY_STATUS_FULL;
+                if (level >= 0 && scale > 0) {
+                    float pct = level * 100f / scale;
+                    if (pct < 10 && !charging) {
+                        Log.w(TAG, "Batareya kam (" + (int) pct + "%) -> bot to'xtatildi");
+                        stopBot();
+                    }
+                }
             }
         } catch (Exception ignored) {}
     }
@@ -400,7 +422,14 @@ public class MyAccessibilityBotService extends AccessibilityService {
     public void onAccessibilityEvent(AccessibilityEvent event) {
         if (event == null || event.getPackageName() == null) return;
         String pkg = event.getPackageName().toString();
-        if (!pkg.equals(getPackageName())) currentPackage = pkg;
+        if (!pkg.equals(getPackageName())) {
+            currentPackage = pkg;
+            // #8 Avtomatik rejim: DLS oldinga chiqsa botni o'zi ishga tushiramiz
+            if (BotState.get().autoMode && !loopActive && isTargetGame(pkg)) {
+                Log.i(TAG, "AUTO: DLS aniqlandi -> bot ishga tushmoqda");
+                startBot();
+            }
+        }
     }
 
     @Override public void onInterrupt() { stopBot(); }

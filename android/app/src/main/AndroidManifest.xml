@@ -9,6 +9,13 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- #1 DLS paketini ko'rish va ocha olish uchun (Android 11+) -->
+    <queries>
+        <package android:name="com.firsttouchgames.dls7" />
+        <package android:name="com.firsttouchgames.dls8" />
+        <package android:name="com.firsttouchgames.dls" />
+    </queries>
+
     <application
         android:allowBackup="true"
         android:label="@string/app_name"

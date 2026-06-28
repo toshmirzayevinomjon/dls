@@ -102,6 +102,16 @@ public class FloatingOverlayService extends Service {
         });
         BotState.get().profile = profiles[profileIndex];
 
+        Button btnAuto = makeButton("AUTO: O'CHIQ", "#37474F");
+        btnAuto.setOnClickListener(v -> {
+            boolean on = !BotState.get().autoMode;
+            BotState.get().autoMode = on;
+            btnAuto.setText("AUTO: " + (on ? "YONIQ" : "O'CHIQ"));
+            Toast.makeText(this, on
+                    ? "Avto: DLS ochilsa bot o'zi ishga tushadi"
+                    : "Avto o'chirildi", Toast.LENGTH_SHORT).show();
+        });
+
         btnSpeed = makeButton("Tezlik: " + speedLabels[speedIndex], "#00838F");
         btnSpeed.setOnClickListener(v -> {
             speedIndex = (speedIndex + 1) % speedFactors.length;
@@ -116,6 +126,7 @@ public class FloatingOverlayService extends Service {
         overlayView.addView(btnCalib);
         overlayView.addView(btnTpl);
         overlayView.addView(btnProfile);
+        overlayView.addView(btnAuto);
         overlayView.addView(btnSpeed);
 
         int type = (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
