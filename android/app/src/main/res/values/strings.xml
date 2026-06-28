@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">DLS Bot</string>
+    <string name="accessibility_desc">DLS o\'yinida barmoq harakatlarini avtomatik bajaradi (offline).</string>
+</resources>
