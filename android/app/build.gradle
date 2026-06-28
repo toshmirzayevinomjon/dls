@@ -34,8 +34,8 @@ android {
 }
 
 dependencies {
-    // OpenCV moduli (Android Studio orqali import qilinadi: File > New > Import Module)
-    implementation project(':opencv')
+    // OpenCV (Maven AAR — modul import qilish SHART EMAS, CI bulutda avtomatik yig'adi)
+    implementation 'com.quickbirdstudios:opencv:4.5.3'
 
     // Retrofit + JSON
     implementation 'com.squareup.retrofit2:retrofit:2.11.0'

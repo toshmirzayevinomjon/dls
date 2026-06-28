@@ -57,7 +57,7 @@
             <span id="dot" class="dot"></span><span id="statusText">Server tekshirilmoqda...</span>
         </div>
 
-        <a class="btn" id="downloadBtn" href="/downloads/dls-bot.apk" download>⬇️ APK yuklab olish</a>
+        <a class="btn" id="downloadBtn" href="https://github.com/toshmirzayevinomjon/dls/releases/latest/download/dls-bot.apk">⬇️ APK yuklab olish</a>
         <a class="btn secondary" href="https://github.com/toshmirzayevinomjon/dls" target="_blank">📦 Manba kodi (GitHub)</a>
         <div class="meta" id="apkMeta">Versiya 1.0 · Android 7.0+</div>
 
@@ -89,21 +89,9 @@
             document.getElementById('statusText').textContent = 'Server o\'chiq';
         });
 
-        // APK mavjudligini tekshiramiz
-        fetch('/downloads/dls-bot.apk', { method: 'HEAD' }).then(r => {
-            if (!r.ok) throw new Error();
-            const size = r.headers.get('content-length');
-            if (size) {
-                const mb = (parseInt(size) / (1024 * 1024)).toFixed(1);
-                document.getElementById('apkMeta').textContent = 'Versiya 1.0 · ' + mb + ' MB · Android 7.0+';
-            }
-        }).catch(() => {
-            const btn = document.getElementById('downloadBtn');
-            btn.textContent = '⏳ APK hali yuklanmagan';
-            btn.style.opacity = '0.6';
-            btn.style.pointerEvents = 'none';
-            document.getElementById('apkMeta').textContent = 'APK fayli backend/public/downloads/ ga qo\'yilishi kerak';
-        });
+        // APK GitHub Release'dan beriladi (Actions avtomatik yig'adi).
+        // Agar hali yig'ilmagan bo'lsa, tugma GitHub releases sahifasiga olib boradi.
+        document.getElementById('apkMeta').textContent = 'Versiya 1.0 · Android 7.0+ · GitHub Releases';
     </script>
 </body>
 </html>

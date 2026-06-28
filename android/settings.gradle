@@ -15,8 +15,3 @@ dependencyResolutionManagement {
 
 rootProject.name = "DLSBot"
 include ':app'
-
-// OpenCV modulini import qilgach, quyidagi qator avtomatik qo'shiladi.
-// Agar qo'lda qo'shsangiz, opencv papkasini android/ ichiga joylang:
-include ':opencv'
-project(':opencv').projectDir = new File(rootDir, 'opencv')
