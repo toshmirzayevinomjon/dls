@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const fs = require('fs');
 const path = require('path');
+const { Readable } = require('stream');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -232,6 +233,27 @@ app.post('/api/bot/decision', async (req, res) => {
     } catch (e) {
         console.error('Server xatosi:', e.message);
         return res.json({ action: mode === 'AGGRESSIVE' ? 'SURISH' : 'PAS', direction: 'none', confidence: 0.1, reason: 'server_error', mode });
+    }
+});
+
+// APK'ni GitHub Release'dan olib, saytdan TO'G'RIDAN-TO'G'RI yuklab beradi.
+// Foydalanuvchi faqat saytni ko'radi, GitHub'ga o'tmaydi.
+const APK_RELEASE_URL = 'https://github.com/toshmirzayevinomjon/dls/releases/latest/download/dls-bot.apk';
+
+app.get('/download/apk', async (req, res) => {
+    try {
+        const r = await fetch(APK_RELEASE_URL, { redirect: 'follow' });
+        if (!r.ok || !r.body) {
+            return res.status(502).send('APK hozircha tayyor emas. Birozdan so\'ng urinib ko\'ring.');
+        }
+        res.setHeader('Content-Type', 'application/vnd.android.package-archive');
+        res.setHeader('Content-Disposition', 'attachment; filename="dls-bot.apk"');
+        const len = r.headers.get('content-length');
+        if (len) res.setHeader('Content-Length', len);
+        Readable.fromWeb(r.body).pipe(res);
+    } catch (e) {
+        console.error('APK stream xato:', e.message);
+        res.status(502).send('APK yuklab bo\'lmadi: ' + e.message);
     }
 });
 
