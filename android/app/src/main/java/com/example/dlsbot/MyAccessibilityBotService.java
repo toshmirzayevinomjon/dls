@@ -67,6 +67,7 @@ public class MyAccessibilityBotService extends AccessibilityService {
 
     // Tashxis: bosish (gesture) natijasi
     private int gestureOk = 0, gestureCancel = 0;
+    private volatile boolean gestureInFlight = false;
 
     private String gameState = "NOMA'LUM";
     private volatile String currentPackage = "";
@@ -128,10 +129,8 @@ public class MyAccessibilityBotService extends AccessibilityService {
         matchEntryStep = 0;
         smoothBallX = -1; smoothBallY = -1;
         ballMissStreak = 0; dynThreshold = -1;
-        // #43 Backend URL bo'lsa, START'da AI kalibrlashni avto-ishga tushiramiz
-        if (!LocalConfig.getBackendUrl(this).isEmpty()) {
-            botHandler.postDelayed(this::autoAiCalibrate, 7000);
-        }
+        // Avto-AI kalibrlash O'CHIQ — vision noaniq koordinata berib pauza qildiryapti edi.
+        // Bot default koordinatalar bilan ishlaydi (ishonchliroq).
         botHandler.post(this::tick);
     }
 
@@ -183,12 +182,19 @@ public class MyAccessibilityBotService extends AccessibilityService {
         try {
             Bitmap frame = state.getLatestFrameCopy();
             if (frame != null && state.isReady()) {
-                Mat small = prepare(frame, s);
-                colorSmall = prepareColor(frame, s);
+                // Tezlik uchun: bitmapToMat FAQAT BIR MARTA, keyin gray ham, color ham shundan
+                Mat fullColor = new Mat();
+                Utils.bitmapToMat(frame, fullColor);
                 frame.recycle();
+                colorSmall = new Mat();
+                Imgproc.resize(fullColor, colorSmall, new Size(s.processWidth, s.processHeight));
+                fullColor.release();
+                Mat small = new Mat();
+                Imgproc.cvtColor(colorSmall, small, Imgproc.COLOR_RGBA2GRAY);
                 navigateAndPlay(small, s);
                 small.release();
-                if (colorSmall != null) { colorSmall.release(); colorSmall = null; }
+                colorSmall.release();
+                colorSmall = null;
                 updateFps();
             }
             heatThrottle(s);
@@ -201,26 +207,6 @@ public class MyAccessibilityBotService extends AccessibilityService {
         botHandler.postDelayed(this::tick, next);
     }
 
-    private Mat prepare(Bitmap frame, BotSettings s) {
-        Mat full = new Mat();
-        Utils.bitmapToMat(frame, full);
-        Mat gray = new Mat();
-        Imgproc.cvtColor(full, gray, Imgproc.COLOR_RGBA2GRAY);
-        full.release();
-        Mat small = new Mat();
-        Imgproc.resize(gray, small, new Size(s.processWidth, s.processHeight));
-        gray.release();
-        return small;
-    }
-
-    private Mat prepareColor(Bitmap frame, BotSettings s) {
-        Mat full = new Mat();
-        Utils.bitmapToMat(frame, full);
-        Mat small = new Mat();
-        Imgproc.resize(full, small, new Size(s.processWidth, s.processHeight));
-        full.release();
-        return small;
-    }
 
     // ===================== AVTONOM NAVIGATSIYA =====================
     private void navigateAndPlay(Mat small, BotSettings s) {
@@ -529,23 +515,28 @@ public class MyAccessibilityBotService extends AccessibilityService {
     }
 
     private void dispatchPath(Path path, long durationMs) {
+        if (gestureInFlight) return; // oldingi bosish tugamaguncha yangisini yubormaymiz (BEKOR kamayadi)
         try {
+            gestureInFlight = true;
             GestureDescription.StrokeDescription stroke =
                     new GestureDescription.StrokeDescription(path, 0, Math.max(10, durationMs));
             dispatchGesture(new GestureDescription.Builder().addStroke(stroke).build(),
                     new GestureResultCallback() {
                         @Override public void onCompleted(GestureDescription gestureDescription) {
+                            gestureInFlight = false;
                             gestureOk++;
                             DebugOverlay d = DebugOverlay.getInstance();
                             if (d != null) d.setGesture(gestureOk, gestureCancel, "OK");
                         }
                         @Override public void onCancelled(GestureDescription gestureDescription) {
+                            gestureInFlight = false;
                             gestureCancel++;
                             DebugOverlay d = DebugOverlay.getInstance();
                             if (d != null) d.setGesture(gestureOk, gestureCancel, "BEKOR");
                         }
                     }, botHandler);
         } catch (Exception e) {
+            gestureInFlight = false;
             Log.e(TAG, "dispatchGesture xato: " + e.getMessage());
         }
     }

@@ -20,10 +20,10 @@ public final class Defaults {
     public static BotSettings buildSettings(Context ctx) {
         BotSettings s = new BotSettings();
         s.version = 1;
-        s.processWidth = 640;
-        s.processHeight = 360;
+        s.processWidth = 480;
+        s.processHeight = 270;
         s.matchThreshold = 0.62f;
-        s.loopIntervalMs = 130;
+        s.loopIntervalMs = 90;
         s.attackRight = true;
         s.joystickRadius = 0.10f;
         s.gestureDurationMs = 90;
