@@ -78,6 +78,7 @@ public class MyAccessibilityBotService extends AccessibilityService {
     private boolean matchEntryActive = false;
     private long lastMatchEntryTapTime = 0;
     private int matchEntryStep = 0;
+    private boolean everInMatch = false; // bir marta to'p topilganmi (BACK bosmaslik uchun)
 
     private long lastFpsTime = 0;
     private int frameCount = 0;
@@ -127,6 +128,7 @@ public class MyAccessibilityBotService extends AccessibilityService {
         matchEntryActive = true;
         lastMatchEntryTapTime = 0;
         matchEntryStep = 0;
+        everInMatch = false;
         smoothBallX = -1; smoothBallY = -1;
         ballMissStreak = 0; dynThreshold = -1;
         // Avto-AI kalibrlash O'CHIQ — vision noaniq koordinata berib pauza qildiryapti edi.
@@ -259,6 +261,7 @@ public class MyAccessibilityBotService extends AccessibilityService {
             gameState = "O'YINDA";
             lastInMatchTime = now;
             matchEntryActive = false;
+            everInMatch = true;
             backPressCount = 0;
             playFootball(small, sm, s, roi);
             pushDebug(sm, s);
@@ -275,11 +278,11 @@ public class MyAccessibilityBotService extends AccessibilityService {
             return;
         }
 
-        // To'p bir lahza topilmadi. Yaqinda o'ynayotgan bo'lsak — bu vaqtinchalik,
-        // chiqib ketmaymiz (sozlama shart emas). To'pni qidirib oldinga harakatlanamiz.
-        if (now - lastInMatchTime < 6000) {
+        // Bir marta o'ynagan bo'lsak (to'p topilgan edi) -> to'p vaqtincha yo'qoldi.
+        // BACK BOSMAYMIZ — chunki DLS'da BACK o'yinni PAUZA qiladi! Faqat qidiramiz.
+        if (everInMatch) {
             gameState = "TO'P QIDIRILMOQDA";
-            if (now - lastActionTime > 250) {
+            if (now - lastActionTime > 200) {
                 lastActionTime = now;
                 ButtonCoord joy = s.findButton("joystick");
                 moveJoystick(joy, s.attackRight ? 1f : -1f, 0f, s,
@@ -289,7 +292,12 @@ public class MyAccessibilityBotService extends AccessibilityService {
             return;
         }
 
-        // Uzoq vaqt (6s+) to'p yo'q -> haqiqatan menyu/xato ekran -> chiqishga harakat
+        // Hali hech qachon o'ynamaganmiz (menyuda bo'lishimiz mumkin) -> navigatsiya
+        if (now - lastInMatchTime < 6000) {
+            gameState = "TO'P QIDIRILMOQDA";
+            pushDebug(null, s);
+            return;
+        }
         gameState = "NOMA'LUM EKRAN";
         handleUnknownScreen(now, s);
         pushDebug(null, s);
