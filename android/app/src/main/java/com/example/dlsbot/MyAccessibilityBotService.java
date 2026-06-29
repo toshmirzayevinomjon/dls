@@ -303,17 +303,10 @@ public class MyAccessibilityBotService extends AccessibilityService {
     }
 
     private void handleUnknownScreen(long now, BotSettings s) {
-        if (now - lastBackTime < 1600) return;
-        lastBackTime = now;
-        if (backPressCount < s.maxBackTries) {
-            performGlobalAction(GLOBAL_ACTION_BACK);
-            backPressCount++;
-            Log.i(TAG, "Noma'lum ekran -> BACK (" + backPressCount + ")");
-        } else {
-            backPressCount = 0;
-            Log.i(TAG, "BACK yordam bermadi -> o'yin qayta ochiladi");
+        // HECH QACHON BACK BOSMAYMIZ — DLS'da BACK o'yinni PAUZA qiladi.
+        // O'rniga, menyu bo'lsa matchEntry koordinatalarini qayta bosamiz (pauza qilmaydi).
+        if (!matchEntryActive) {
             resetMatchEntryFlow();
-            launchGame(s);
         }
     }
 
