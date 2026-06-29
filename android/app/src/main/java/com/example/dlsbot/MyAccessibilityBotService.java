@@ -51,6 +51,10 @@ public class MyAccessibilityBotService extends AccessibilityService {
     private int myGoals = 0, oppGoals = 0;
     private long lastGoalTime = 0, lastConcedeTime = 0;
 
+    // #46/#48 To'p tezligini kuzatish (bashorat uchun)
+    private float lastBallX = -1, lastBallY = -1;
+    private long lastBallT = 0;
+
     private String gameState = "NOMA'LUM";
     private volatile String currentPackage = "";
     private long lastInMatchTime = 0;
@@ -284,14 +288,33 @@ public class MyAccessibilityBotService extends AccessibilityService {
         Vision.Match ctrl = Vision.matchMultiScale(
                 small, BotState.get().templates.get("control_indicator"), s.matchThreshold, s.scales, roi);
         if (ctrl != null) {
-            float d = Vision.distance(ball.cx, ball.cy, ctrl.cx, ctrl.cy);
-            hasBall = d < (s.processWidth * 0.08f);
+            float dd = Vision.distance(ball.cx, ball.cy, ctrl.cx, ctrl.cy);
+            hasBall = dd < (s.processWidth * 0.08f);
         } else {
             hasBall = ball.score > (s.matchThreshold + 0.08f);
         }
+
         float bx = ball.cx / s.processWidth;
-        strategy = LocalStrategy.decide(bx, hasBall, s.attackRight, myGoals);
+        float by = ball.cy / s.processHeight;
+
+        // #46/#48 To'p tezligini hisoblab, pozitsiyani oldindan bashorat qilamiz
+        long now = System.currentTimeMillis();
+        float velX = 0, velY = 0;
+        if (lastBallX >= 0 && now - lastBallT > 0 && now - lastBallT < 400) {
+            float dt = (now - lastBallT) / 1000f;
+            velX = (bx - lastBallX) / dt;
+            velY = (by - lastBallY) / dt;
+        }
+        lastBallX = bx; lastBallY = by; lastBallT = now;
+        float predX = clamp01(bx + velX * 0.15f);
+        float predY = clamp01(by + velY * 0.15f);
+
+        strategy = LocalStrategy.decide(predX, predY, velX, velY, hasBall, s.attackRight, myGoals);
         actByStrategy(s);
+    }
+
+    private static float clamp01(float v) {
+        return v < 0 ? 0 : (v > 1 ? 1 : v);
     }
 
     private void detectGoals(Mat small, BotSettings s) {
@@ -309,41 +332,63 @@ public class MyAccessibilityBotService extends AccessibilityService {
 
     private void actByStrategy(BotSettings s) {
         long now = System.currentTimeMillis();
-        long minGap = Humanizer.randomDelay(180, 420);
+        long minGap = Humanizer.randomDelay(150, 360);
         if (now - lastActionTime < minGap) return;
-        if (Humanizer.shouldHesitate(0.07)) { lastActionTime = now + Humanizer.hesitationPause(); return; }
+        if (Humanizer.shouldHesitate(0.06)) { lastActionTime = now + Humanizer.hesitationPause(); return; }
         lastActionTime = now;
 
+        DecisionResponse d = strategy;
+        if (d == null) return;
         int sw = BotState.get().screenWidth, sh = BotState.get().screenHeight;
-        boolean attackRight = s.attackRight;
-        String action = (strategy != null) ? strategy.action : "SURISH";
         ButtonCoord shoot = s.findButton("A_shoot");
         ButtonCoord pass = s.findButton("B_pass");
+        ButtonCoord thru = s.findButton("C_thru");
         ButtonCoord joy = s.findButton("joystick");
 
-        switch (action) {
-            case "ZARBA":
+        switch (d.action) {
+            case "SHOOT":
+                // #1 Mo'ljal: joystickni burchak tomon burib, keyin zarba
+                moveJoystick(joy, d.dirX, d.dirY, s, sw, sh);
+                if (shoot != null) {
+                    final float x = shoot.x * sw, y = shoot.y * sh;
+                    botHandler.postDelayed(() -> humanTap(x, y, sw, sh), Humanizer.randomDelay(110, 180));
+                }
+                break;
+            case "THROUGH":
+                moveJoystick(joy, d.dirX, d.dirY, s, sw, sh);
+                if (thru != null) humanTap(thru.x * sw, thru.y * sh, sw, sh);
+                else if (pass != null) humanTap(pass.x * sw, pass.y * sh, sw, sh);
+                break;
+            case "PASS":
+                moveJoystick(joy, d.dirX, d.dirY, s, sw, sh);
+                if (pass != null) humanTap(pass.x * sw, pass.y * sh, sw, sh);
+                break;
+            case "CLEAR":
+                moveJoystick(joy, d.dirX, d.dirY, s, sw, sh);
                 if (shoot != null) humanTap(shoot.x * sw, shoot.y * sh, sw, sh);
                 break;
-            case "PAS":
-                if (pass != null) humanTap(pass.x * sw, pass.y * sh, sw, sh);
+            case "TACKLE":
+                moveJoystick(joy, d.dirX, d.dirY, s, sw, sh);
+                if (pass != null) humanTap(pass.x * sw, pass.y * sh, sw, sh); // B = bosim/tackle
                 break;
-            case "HIMOYA":
-                if (joy != null) joystickSwipe(joy, !attackRight, s, sw, sh);
-                if (pass != null) humanTap(pass.x * sw, pass.y * sh, sw, sh);
-                break;
-            case "SURISH":
+            case "DRIBBLE":
+            case "CHASE":
             default:
-                if (joy != null) joystickSwipe(joy, attackRight, s, sw, sh);
+                moveJoystick(joy, d.dirX, d.dirY, s, sw, sh);
                 break;
         }
     }
 
-    private void joystickSwipe(ButtonCoord joy, boolean toRight, BotSettings s, int sw, int sh) {
+    // Joystickni berilgan yo'nalishga suradi (-1..1). Yo'nalish 0 bo'lsa hujum tomon.
+    private void moveJoystick(ButtonCoord joy, float dirX, float dirY, BotSettings s, int sw, int sh) {
+        if (joy == null) return;
         float jx = joy.x * sw, jy = joy.y * sh;
-        float radius = s.joystickRadius * sw;
-        float endX = jx + (toRight ? 1f : -1f) * radius;
-        humanSwipe(jx, jy, endX, jy, sw, sh, s.gestureDurationMs);
+        float r = s.joystickRadius * sw;
+        float mag = (float) Math.sqrt(dirX * dirX + dirY * dirY);
+        if (mag < 0.01f) { dirX = s.attackRight ? 1f : -1f; dirY = 0f; mag = 1f; }
+        float ex = jx + r * dirX / mag;
+        float ey = jy + r * dirY / mag;
+        humanSwipe(jx, jy, ex, ey, sw, sh, s.gestureDurationMs);
     }
 
     private void humanTap(float x, float y, int sw, int sh) {
