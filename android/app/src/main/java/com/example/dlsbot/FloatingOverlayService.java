@@ -73,11 +73,22 @@ public class FloatingOverlayService extends Service {
             Toast.makeText(this, "To'xtatildi", Toast.LENGTH_SHORT).show();
         });
 
+        // Bitta SOZLASH tugmasi: 20 soniyada tugmalarni aniq belgilash (joystick, A, B, C)
+        Button btnCalib = makeButton("📍 SOZLASH (20s)", "#1565C0");
+        btnCalib.setOnClickListener(v -> {
+            MyAccessibilityBotService bot = MyAccessibilityBotService.getInstance();
+            if (bot != null) bot.stopBot();
+            Toast.makeText(this, "Tugmalarni ketma-ket bosing: joystick, A, B, C",
+                    Toast.LENGTH_LONG).show();
+            new CalibrationOverlay(this).start();
+        });
+
         // Qolgani avtomatik: DLS ochilsa bot o'zi boshlaydi (autoMode doimo yoniq)
         BotState.get().autoMode = true;
 
         overlayView.addView(btnStart);
         overlayView.addView(btnStop);
+        overlayView.addView(btnCalib);
 
         int type = (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
                 ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
