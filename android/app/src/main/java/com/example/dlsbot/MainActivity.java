@@ -24,6 +24,8 @@ public class MainActivity extends AppCompatActivity {
     private static final int REQ_NOTIF = 1002;
 
     private MediaProjectionManager projectionManager;
+    private android.widget.TextView statusView;
+    private boolean autoOverlayOpened = false, autoAccessOpened = false, projectionRequested = false;
 
     @Override
     protected void onCreate(@Nullable Bundle savedInstanceState) {
@@ -57,6 +59,12 @@ public class MainActivity extends AppCompatActivity {
             Toast.makeText(this, "Kalit saqlandi", Toast.LENGTH_SHORT).show();
         });
 
+        statusView = new android.widget.TextView(this);
+        statusView.setText("Sozlash boshlanmoqda...");
+        statusView.setTextSize(17);
+        statusView.setPadding(0, 0, 0, 40);
+
+        root.addView(statusView);
         root.addView(btnOverlay);
         root.addView(btnAccess);
         root.addView(btnStart);
@@ -66,6 +74,46 @@ public class MainActivity extends AppCompatActivity {
 
         projectionManager = (MediaProjectionManager) getSystemService(Context.MEDIA_PROJECTION_SERVICE);
         requestNotificationPermission();
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        advanceSetup();
+    }
+
+    // Avto-sehrgar: kerakli ruxsatlarni ketma-ket o'zi ochib boradi
+    private void advanceSetup() {
+        if (statusView == null) return;
+        if (!Settings.canDrawOverlays(this)) {
+            statusView.setText("1/3 Overlay ruxsati — sahifa ochilmoqda, yoqing");
+            if (!autoOverlayOpened) { autoOverlayOpened = true; requestOverlay(); }
+            return;
+        }
+        if (!isAccessibilityEnabled()) {
+            statusView.setText("2/3 Accessibility — ro'yxatdan 'DLS Bot' ni yoqing");
+            if (!autoAccessOpened) {
+                autoAccessOpened = true;
+                startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS));
+            }
+            return;
+        }
+        if (BotState.get().projectionResultData == null) {
+            statusView.setText("3/3 Ekran olishga ruxsat bering");
+            if (!projectionRequested) { projectionRequested = true; requestProjection(); }
+            return;
+        }
+        statusView.setText("✅ Hammasi tayyor! Bot avtomatik ishlaydi.");
+    }
+
+    private boolean isAccessibilityEnabled() {
+        try {
+            String flat = Settings.Secure.getString(getContentResolver(),
+                    Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES);
+            return flat != null && flat.contains(getPackageName());
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     private void requestNotificationPermission() {
