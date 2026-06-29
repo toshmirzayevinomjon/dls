@@ -223,6 +223,21 @@ public class MyAccessibilityBotService extends AccessibilityService {
             return;
         }
 
+        // To'p bir lahza topilmadi. Yaqinda o'ynayotgan bo'lsak — bu vaqtinchalik,
+        // chiqib ketmaymiz (sozlama shart emas). To'pni qidirib oldinga harakatlanamiz.
+        if (now - lastInMatchTime < 6000) {
+            gameState = "TO'P QIDIRILMOQDA";
+            if (now - lastActionTime > 250) {
+                lastActionTime = now;
+                ButtonCoord joy = s.findButton("joystick");
+                moveJoystick(joy, s.attackRight ? 1f : -1f, 0f, s,
+                        BotState.get().screenWidth, BotState.get().screenHeight);
+            }
+            pushDebug(null, s);
+            return;
+        }
+
+        // Uzoq vaqt (6s+) to'p yo'q -> haqiqatan menyu/xato ekran -> chiqishga harakat
         gameState = "NOMA'LUM EKRAN";
         handleUnknownScreen(now, s);
         pushDebug(null, s);

@@ -75,11 +75,11 @@ public class FloatingOverlayService extends Service {
         });
 
         // 1 martalik sozlash: shablon olish -> tugagach kalibrlash
-        Button btnSetup = makeButton("⚙ Sozlash (1-marta)", "#1565C0");
+        Button btnSetup = makeButton("⚙ Sozlash (ixtiyoriy)", "#1565C0");
         btnSetup.setOnClickListener(v -> {
             MyAccessibilityBotService bot = MyAccessibilityBotService.getInstance();
             if (bot != null) bot.stopBot();
-            Toast.makeText(this, "Menyu tugmalarini ko'rsating, keyin A/B/C ni belgilaysiz", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, "Ixtiyoriy: aniqlik uchun menyu tugmalari + A/B/C", Toast.LENGTH_LONG).show();
             new CaptureTemplateOverlay(this, () -> new CalibrationOverlay(this).start()).start();
         });
 
