@@ -45,9 +45,15 @@ public class CaptureTemplateOverlay {
             "Raqib goli banneri"
     };
     private int index = 0;
+    private final Runnable onFinish;
 
     public CaptureTemplateOverlay(Context ctx) {
+        this(ctx, null);
+    }
+
+    public CaptureTemplateOverlay(Context ctx, Runnable onFinish) {
         this.ctx = ctx;
+        this.onFinish = onFinish;
         this.wm = (WindowManager) ctx.getSystemService(Context.WINDOW_SERVICE);
     }
 
@@ -164,6 +170,9 @@ public class CaptureTemplateOverlay {
     private void close() {
         try { if (root != null) wm.removeView(root); } catch (Exception ignored) {}
         root = null;
+        if (onFinish != null) {
+            try { onFinish.run(); } catch (Exception ignored) {}
+        }
     }
 
     // To'rtburchakni chizadigan va tanlovni qabul qiladigan View

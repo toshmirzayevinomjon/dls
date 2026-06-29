@@ -19,6 +19,13 @@ import android.widget.Toast;
 
 import androidx.annotation.Nullable;
 
+/**
+ * Minimal boshqaruv paneli:
+ *   ▶ START   — hammasini o'zi qiladi (o'yinni ochish, menyu, match, o'ynash)
+ *   ■ STOP    — to'xtatish
+ *   ⚙ Sozlash — 1 martalik: menyu tugmalarini ko'rsatish + A/B/C kalibrlash
+ *   AUTO      — DLS ochilsa bot o'zi START qilsin
+ */
 public class FloatingOverlayService extends Service {
 
     private static final String CHANNEL_ID = "dls_overlay";
@@ -27,18 +34,6 @@ public class FloatingOverlayService extends Service {
     private WindowManager windowManager;
     private LinearLayout overlayView;
     private WindowManager.LayoutParams params;
-
-    // #9 profillar aylanmasi
-    private final String[] profiles = { "balanced", "attacker", "defender" };
-    private final String[] profileLabels = { "Balansli", "Hujumchi", "Himoyachi" };
-    private int profileIndex = 0;
-    private Button btnProfile;
-
-    // #41 tezlik: normal / tez / sekin
-    private final String[] speedLabels = { "Normal", "Tez", "Sekin" };
-    private final float[] speedFactors = { 1.0f, 0.6f, 1.6f };
-    private int speedIndex = 0;
-    private Button btnSpeed;
 
     @Override
     public void onCreate() {
@@ -61,7 +56,7 @@ public class FloatingOverlayService extends Service {
         overlayView.setBackgroundColor(Color.argb(120, 0, 0, 0));
         overlayView.setPadding(8, 8, 8, 8);
 
-        Button btnStart = makeButton("START", "#2E7D32");
+        Button btnStart = makeButton("▶ START", "#2E7D32");
         btnStart.setOnClickListener(v -> {
             MyAccessibilityBotService bot = MyAccessibilityBotService.getInstance();
             if (bot == null) {
@@ -69,65 +64,38 @@ public class FloatingOverlayService extends Service {
                 return;
             }
             bot.startBot();
-            Toast.makeText(this, "Bot ishga tushdi", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "Bot ishga tushdi — o'zi o'ynaydi", Toast.LENGTH_SHORT).show();
         });
 
-        Button btnStop = makeButton("STOP", "#C62828");
+        Button btnStop = makeButton("■ STOP", "#C62828");
         btnStop.setOnClickListener(v -> {
             MyAccessibilityBotService bot = MyAccessibilityBotService.getInstance();
             if (bot != null) bot.stopBot();
-            Toast.makeText(this, "Bot to'xtatildi", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "To'xtatildi", Toast.LENGTH_SHORT).show();
         });
 
-        Button btnCalib = makeButton("CALIB", "#1565C0");
-        btnCalib.setOnClickListener(v -> {
+        // 1 martalik sozlash: shablon olish -> tugagach kalibrlash
+        Button btnSetup = makeButton("⚙ Sozlash (1-marta)", "#1565C0");
+        btnSetup.setOnClickListener(v -> {
             MyAccessibilityBotService bot = MyAccessibilityBotService.getInstance();
             if (bot != null) bot.stopBot();
-            new CalibrationOverlay(this).start();
+            Toast.makeText(this, "Menyu tugmalarini ko'rsating, keyin A/B/C ni belgilaysiz", Toast.LENGTH_LONG).show();
+            new CaptureTemplateOverlay(this, () -> new CalibrationOverlay(this).start()).start();
         });
-
-        Button btnTpl = makeButton("Shablon ol", "#EF6C00");
-        btnTpl.setOnClickListener(v -> {
-            MyAccessibilityBotService bot = MyAccessibilityBotService.getInstance();
-            if (bot != null) bot.stopBot();
-            new CaptureTemplateOverlay(this).start();
-        });
-
-        btnProfile = makeButton("Profil: " + profileLabels[profileIndex], "#6A1B9A");
-        btnProfile.setOnClickListener(v -> {
-            profileIndex = (profileIndex + 1) % profiles.length;
-            BotState.get().profile = profiles[profileIndex];
-            btnProfile.setText("Profil: " + profileLabels[profileIndex]);
-            Toast.makeText(this, "Profil: " + profileLabels[profileIndex], Toast.LENGTH_SHORT).show();
-        });
-        BotState.get().profile = profiles[profileIndex];
 
         Button btnAuto = makeButton("AUTO: O'CHIQ", "#37474F");
         btnAuto.setOnClickListener(v -> {
             boolean on = !BotState.get().autoMode;
             BotState.get().autoMode = on;
-            btnAuto.setText("AUTO: " + (on ? "YONIQ" : "O'CHIQ"));
-            Toast.makeText(this, on
-                    ? "Avto: DLS ochilsa bot o'zi ishga tushadi"
-                    : "Avto o'chirildi", Toast.LENGTH_SHORT).show();
+            ((Button) v).setText("AUTO: " + (on ? "YONIQ" : "O'CHIQ"));
+            Toast.makeText(this, on ? "DLS ochilsa bot o'zi boshlaydi" : "Avto o'chirildi",
+                    Toast.LENGTH_SHORT).show();
         });
-
-        btnSpeed = makeButton("Tezlik: " + speedLabels[speedIndex], "#00838F");
-        btnSpeed.setOnClickListener(v -> {
-            speedIndex = (speedIndex + 1) % speedFactors.length;
-            BotState.get().speedFactor = speedFactors[speedIndex];
-            btnSpeed.setText("Tezlik: " + speedLabels[speedIndex]);
-            Toast.makeText(this, "Tezlik: " + speedLabels[speedIndex], Toast.LENGTH_SHORT).show();
-        });
-        BotState.get().speedFactor = speedFactors[speedIndex];
 
         overlayView.addView(btnStart);
         overlayView.addView(btnStop);
-        overlayView.addView(btnCalib);
-        overlayView.addView(btnTpl);
-        overlayView.addView(btnProfile);
+        overlayView.addView(btnSetup);
         overlayView.addView(btnAuto);
-        overlayView.addView(btnSpeed);
 
         int type = (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
                 ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
