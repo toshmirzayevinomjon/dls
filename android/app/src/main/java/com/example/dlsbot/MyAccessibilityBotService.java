@@ -65,6 +65,9 @@ public class MyAccessibilityBotService extends AccessibilityService {
     // #21 Rangli kadr (oq-to'p aniqlash uchun)
     private Mat colorSmall;
 
+    // Tashxis: bosish (gesture) natijasi
+    private int gestureOk = 0, gestureCancel = 0;
+
     private String gameState = "NOMA'LUM";
     private volatile String currentPackage = "";
     private long lastInMatchTime = 0;
@@ -529,7 +532,19 @@ public class MyAccessibilityBotService extends AccessibilityService {
         try {
             GestureDescription.StrokeDescription stroke =
                     new GestureDescription.StrokeDescription(path, 0, Math.max(10, durationMs));
-            dispatchGesture(new GestureDescription.Builder().addStroke(stroke).build(), null, botHandler);
+            dispatchGesture(new GestureDescription.Builder().addStroke(stroke).build(),
+                    new GestureResultCallback() {
+                        @Override public void onCompleted(GestureDescription gestureDescription) {
+                            gestureOk++;
+                            DebugOverlay d = DebugOverlay.getInstance();
+                            if (d != null) d.setGesture(gestureOk, gestureCancel, "OK");
+                        }
+                        @Override public void onCancelled(GestureDescription gestureDescription) {
+                            gestureCancel++;
+                            DebugOverlay d = DebugOverlay.getInstance();
+                            if (d != null) d.setGesture(gestureOk, gestureCancel, "BEKOR");
+                        }
+                    }, botHandler);
         } catch (Exception e) {
             Log.e(TAG, "dispatchGesture xato: " + e.getMessage());
         }

@@ -53,7 +53,7 @@ public class DebugOverlay extends View {
         // bot bosishlarini "to'silgan" deb rad etadi (obscured touch).
         WindowManager.LayoutParams lp = new WindowManager.LayoutParams(
                 WindowManager.LayoutParams.MATCH_PARENT,
-                210,
+                260,
                 type,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
                         | WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
@@ -72,6 +72,9 @@ public class DebugOverlay extends View {
         instance = null;
     }
 
+    private int gestureOk = 0, gestureCancel = 0;
+    private String lastTap = "-";
+
     public void update(float ballRealX, float ballRealY, boolean found,
                        String action, String mode, String gameState, float confidence,
                        int myGoals, int oppGoals, float fps) {
@@ -88,16 +91,26 @@ public class DebugOverlay extends View {
         postInvalidate();
     }
 
+    // Tashxis: bot bosishlari tizim tomonidan bajarildimi (OK) yoki bekor (CANCEL)?
+    public void setGesture(int ok, int cancel, String last) {
+        this.gestureOk = ok;
+        this.gestureCancel = cancel;
+        this.lastTap = last;
+        postInvalidate();
+    }
+
     @Override
     protected void onDraw(Canvas canvas) {
         super.onDraw(canvas);
-        canvas.drawRect(0, 0, getWidth(), 175, bgPaint);
+        canvas.drawRect(0, 0, getWidth(), 230, bgPaint);
         canvas.drawText("Holat: " + gameState + "   Rejim: " + mode
                 + "   FPS: " + String.format("%.1f", fps), 20, 42, textPaint);
         canvas.drawText("Hisob: " + myGoals + "-" + oppGoals
                 + "   Buyruq: " + action
                 + "   Ishonch: " + String.format("%.2f", confidence), 20, 90, textPaint);
-        canvas.drawText("Top: " + (ballFound ? "TOPILDI" : "yo'q"), 20, 138, textPaint);
+        canvas.drawText("Top: " + (ballFound ? "TOPILDI" : "yo'q")
+                + "   Oxirgi bosish: " + lastTap, 20, 138, textPaint);
+        canvas.drawText("BOSISH -> OK: " + gestureOk + "   BEKOR: " + gestureCancel, 20, 186, textPaint);
 
         if (ballFound && ballX >= 0) {
             canvas.drawCircle(ballX, ballY, 40, ballPaint);
