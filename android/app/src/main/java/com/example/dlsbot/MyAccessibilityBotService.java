@@ -57,6 +57,11 @@ public class MyAccessibilityBotService extends AccessibilityService {
     private float lastBallX = -1, lastBallY = -1;
     private long lastBallT = 0;
 
+    // Aniqlik: silliqlash (#46), miss-streak, dinamik threshold (#22)
+    private float smoothBallX = -1, smoothBallY = -1;
+    private int ballMissStreak = 0;
+    private float dynThreshold = -1;
+
     private String gameState = "NOMA'LUM";
     private volatile String currentPackage = "";
     private long lastInMatchTime = 0;
@@ -115,6 +120,12 @@ public class MyAccessibilityBotService extends AccessibilityService {
         matchEntryActive = true;
         lastMatchEntryTapTime = 0;
         matchEntryStep = 0;
+        smoothBallX = -1; smoothBallY = -1;
+        ballMissStreak = 0; dynThreshold = -1;
+        // #43 Groq kaliti bo'lsa, START'da AI kalibrlashni avto-ishga tushiramiz
+        if (!LocalConfig.getGroqKey(this).isEmpty()) {
+            botHandler.postDelayed(this::autoAiCalibrate, 7000);
+        }
         botHandler.post(this::tick);
     }
 
@@ -222,20 +233,35 @@ public class MyAccessibilityBotService extends AccessibilityService {
 
         Rect roi = Vision.roiFromSettings(s);
         Mat ballTmpl = BotState.get().templates.get("ball");
+        float useThr = (dynThreshold > 0) ? dynThreshold : s.matchThreshold;
         Vision.Match ball = (ballTmpl != null)
-                ? Vision.matchMultiScale(small, ballTmpl, s.matchThreshold, s.scales, roi)
+                ? Vision.matchMultiScale(small, ballTmpl, useThr, s.scales, roi)
                 : null;
         // #9 Shablon bo'lmasa yoki topilmasa -> rang/shakl bo'yicha qidiramiz
         if (ball == null) ball = Vision.detectBallByColor(small, roi);
 
         if (ball != null) {
+            ballMissStreak = 0;
+            dynThreshold = s.matchThreshold; // #22 normal holatga qaytaramiz
+            // #46 silliqlash (eksponensial) + sakrashlarni kamaytirish
+            if (smoothBallX < 0) { smoothBallX = ball.cx; smoothBallY = ball.cy; }
+            else {
+                smoothBallX = 0.6f * smoothBallX + 0.4f * ball.cx;
+                smoothBallY = 0.6f * smoothBallY + 0.4f * ball.cy;
+            }
+            Vision.Match sm = new Vision.Match(smoothBallX, smoothBallY, ball.score, ball.scale);
+
             gameState = "O'YINDA";
             lastInMatchTime = now;
             matchEntryActive = false;
             backPressCount = 0;
-            playFootball(small, ball, s, roi);
-            pushDebug(ball, s);
+            playFootball(small, sm, s, roi);
+            pushDebug(sm, s);
             return;
+        } else {
+            ballMissStreak++;
+            // #22 to'p uzoq topilmasa, threshold'ni avto-pasaytiramiz
+            if (ballMissStreak == 8) dynThreshold = Math.max(0.45f, s.matchThreshold - 0.12f);
         }
 
         if (matchEntryActive) {
@@ -543,6 +569,26 @@ public class MyAccessibilityBotService extends AccessibilityService {
         String md = (strategy != null && strategy.mode != null) ? strategy.mode : "-";
         float conf = (strategy != null) ? strategy.confidence : 0f;
         dbg.update(bx, by, found, act, md, gameState, conf, myGoals, oppGoals, fps);
+    }
+
+    // #43 Groq Vision bilan tugmalarni avto-joylashtirish (START'da, kalit bo'lsa)
+    private void autoAiCalibrate() {
+        if (!loopActive) return;
+        String key = LocalConfig.getGroqKey(this);
+        if (key == null || key.isEmpty()) return;
+        Bitmap frame = BotState.get().getLatestFrameCopy();
+        if (frame == null) return;
+        new Thread(() -> GroqVision.autoCalibrate(frame, key, new GroqVision.Cb() {
+            @Override public void onResult(List<ButtonCoord> b) {
+                LocalConfig.saveButtons(getApplicationContext(), b);
+                BotSettings s2 = BotState.get().settings;
+                if (s2 != null) LocalConfig.applyCalibration(MyAccessibilityBotService.this, s2);
+                Log.i(TAG, "AI auto-kalibrlash qo'llandi: " + b.size());
+            }
+            @Override public void onError(String e) {
+                Log.w(TAG, "AI auto-kalibrlash: " + e);
+            }
+        })).start();
     }
 
     @Override
