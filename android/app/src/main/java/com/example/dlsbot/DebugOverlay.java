@@ -49,14 +49,17 @@ public class DebugOverlay extends View {
         int type = (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
                 ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
                 : WindowManager.LayoutParams.TYPE_PHONE;
+        // MUHIM: faqat YUQORI chiziq (to'liq ekran emas) — aks holda o'yin
+        // bot bosishlarini "to'silgan" deb rad etadi (obscured touch).
         WindowManager.LayoutParams lp = new WindowManager.LayoutParams(
                 WindowManager.LayoutParams.MATCH_PARENT,
-                WindowManager.LayoutParams.MATCH_PARENT,
+                210,
                 type,
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
                         | WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
                         | WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
                 PixelFormat.TRANSLUCENT);
+        lp.gravity = android.view.Gravity.TOP;
         wm.addView(instance, lp);
     }
 
