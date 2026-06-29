@@ -27,8 +27,13 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
+      - name: Set up Gradle 8.13
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.13'
+
       - name: Install SDK packages
-        run: sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
+        run: sdkmanager "platform-tools" "platforms;android-34" "platforms;android-35" "build-tools;35.0.0"
 
       - name: Download OpenCV 4.12.0 Android SDK
         working-directory: android
@@ -58,13 +63,9 @@ jobs:
           echo "--- OpenCV build.gradle (boshi) ---"
           head -50 build.gradle
 
-      - name: Generate Gradle wrapper (8.13)
-        working-directory: android
-        run: gradle wrapper --gradle-version 8.13
-
       - name: Build Debug APK
         working-directory: android
-        run: ./gradlew assembleDebug --no-daemon --stacktrace
+        run: gradle assembleDebug --no-daemon --stacktrace
 
       - name: Rename APK
         run: cp android/app/build/outputs/apk/debug/app-debug.apk dls-bot.apk
