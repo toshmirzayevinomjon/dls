@@ -191,9 +191,9 @@ public final class Vision {
             double circ = 4 * Math.PI * a / (peri * peri); // dumaloqlik
             if (circ < 0.6) continue;
             Moments m = Imgproc.moments(c);
-            if (m.get_m00() == 0) continue;
-            float cx = (float) (offX + m.get_m10() / m.get_m00());
-            float cy = (float) (offY + m.get_m01() / m.get_m00());
+            if (m.m00 == 0) continue;
+            float cx = (float) (offX + m.m10 / m.m00);
+            float cy = (float) (offY + m.m01 / m.m00);
             if (circ > bestScore) {
                 bestScore = circ;
                 best = new Match(cx, cy, (float) Math.min(0.9, 0.6 + circ * 0.3), 1.0f);
