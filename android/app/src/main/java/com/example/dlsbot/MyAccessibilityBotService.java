@@ -68,8 +68,10 @@ public class MyAccessibilityBotService extends AccessibilityService {
     public void onServiceConnected() {
         super.onServiceConnected();
         instance = this;
-        if (!OpenCVLoader.initDebug()) {
-            Log.e(TAG, "OpenCV initDebug MUVAFFAQIYATSIZ");
+        boolean cvOk = OpenCVLoader.initLocal();
+        if (!cvOk) cvOk = OpenCVLoader.initDebug();
+        if (!cvOk) {
+            Log.e(TAG, "OpenCV ishga tushmadi");
         } else {
             Log.i(TAG, "OpenCV tayyor: " + Core.VERSION);
         }

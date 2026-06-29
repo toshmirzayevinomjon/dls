@@ -30,6 +30,34 @@ jobs:
       - name: Install SDK packages
         run: sdkmanager "platform-tools" "platforms;android-34" "build-tools;34.0.0"
 
+      - name: Download OpenCV 4.12.0 Android SDK
+        working-directory: android
+        run: |
+          curl -L -o opencv-sdk.zip https://github.com/opencv/opencv/releases/download/4.12.0/opencv-4.12.0-android-sdk.zip
+          unzip -q opencv-sdk.zip
+          rm -rf opencv
+          mv OpenCV-android-sdk/sdk opencv
+          rm -rf OpenCV-android-sdk opencv-sdk.zip
+          echo "OpenCV modul tarkibi:"
+          ls opencv
+
+      - name: Patch OpenCV module for AGP 8
+        working-directory: android/opencv
+        run: |
+          # namespace qo'shamiz (AGP 8 talab qiladi)
+          if ! grep -q "namespace" build.gradle; then
+            sed -i "s/android {/android {\n    namespace 'org.opencv'/" build.gradle
+          fi
+          # compileSdk/minSdk ni moslaymiz
+          sed -i 's/compileSdkVersion[ ]*[0-9]*/compileSdk 34/' build.gradle || true
+          sed -i 's/compileSdk[ ]*[0-9]*/compileSdk 34/' build.gradle || true
+          # manifestdan package atributini olib tashlaymiz (AGP 8 namespace ishlatadi)
+          for MAN in $(find . -name AndroidManifest.xml); do
+            sed -i 's/package="org.opencv"//' "$MAN" || true
+          done
+          echo "--- OpenCV build.gradle (boshi) ---"
+          head -50 build.gradle
+
       - name: Generate Gradle wrapper (8.7)
         working-directory: android
         run: gradle wrapper --gradle-version 8.7

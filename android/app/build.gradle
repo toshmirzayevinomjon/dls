@@ -34,8 +34,8 @@ android {
 }
 
 dependencies {
-    // OpenCV (Maven AAR — modul import qilish SHART EMAS, CI bulutda avtomatik yig'adi)
-    implementation 'com.quickbirdstudios:opencv:4.5.3'
+    // OpenCV 4.12.0 — rasmiy SDK moduli (CI'da avtomatik yuklab olinadi)
+    implementation project(':opencv')
 
     // Retrofit + JSON
     implementation 'com.squareup.retrofit2:retrofit:2.11.0'
