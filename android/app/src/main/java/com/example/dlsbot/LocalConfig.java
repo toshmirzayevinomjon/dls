@@ -36,12 +36,13 @@ public final class LocalConfig {
         return prefs(c).getBoolean("calibrated", false);
     }
 
-    public static void saveGroqKey(Context c, String key) {
-        prefs(c).edit().putString("groq_key", key).apply();
+    // Backend (Railway) manzili — AI kalibrlash shu orqali ketadi. Kalit ILOVADA EMAS.
+    public static void saveBackendUrl(Context c, String url) {
+        prefs(c).edit().putString("backend_url", url).apply();
     }
 
-    public static String getGroqKey(Context c) {
-        return prefs(c).getString("groq_key", "");
+    public static String getBackendUrl(Context c) {
+        return prefs(c).getString("backend_url", "");
     }
 
     public static void applyCalibration(Context c, BotSettings s) {

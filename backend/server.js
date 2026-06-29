@@ -272,6 +272,55 @@ app.get('/download/apk', async (req, res) => {
     }
 });
 
+// AI kalibrlash: ilova skrinshot yuboradi, biz Groq Vision bilan tugmalarni topamiz.
+// Kalit faqat shu yerda (Railway env), ilovada saqlanmaydi.
+const VISION_MODEL = process.env.GROQ_VISION_MODEL || 'meta-llama/llama-4-scout-17b-16e-instruct';
+const VISION_PROMPT =
+    'This is a Dream League Soccer mobile game screenshot. Find the on-screen touch '
+    + 'controls and return ONLY JSON with normalized coordinates (0.0-1.0, x from left, '
+    + 'y from top) of their CENTERS: joystick (round movement control on the LEFT), '
+    + 'A_shoot (shoot button, usually bottom-right), B_pass (pass button near shoot), '
+    + 'C_thru (through-pass button near shoot). Respond EXACTLY as: '
+    + '{"joystick":{"x":0.0,"y":0.0},"A_shoot":{"x":0.0,"y":0.0},'
+    + '"B_pass":{"x":0.0,"y":0.0},"C_thru":{"x":0.0,"y":0.0}}. No other text.';
+
+app.post('/api/bot/vision-calibrate', async (req, res) => {
+    try {
+        const image = req.body && req.body.image;
+        if (!image) return res.status(400).json({ error: 'image kerak' });
+        const dataUrl = image.startsWith('data:') ? image : 'data:image/jpeg;base64,' + image;
+
+        const r = await fetch(GROQ_URL, {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${GROQ_API_KEY}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                model: VISION_MODEL,
+                temperature: 0.1,
+                max_tokens: 400,
+                messages: [{
+                    role: 'user',
+                    content: [
+                        { type: 'text', text: VISION_PROMPT },
+                        { type: 'image_url', image_url: { url: dataUrl } }
+                    ]
+                }]
+            })
+        });
+        if (!r.ok) {
+            const t = await r.text();
+            return res.status(502).json({ error: `groq ${r.status}: ${t.slice(0, 160)}` });
+        }
+        const data = await r.json();
+        const content = data.choices?.[0]?.message?.content || '';
+        const a = content.indexOf('{'), b = content.lastIndexOf('}');
+        if (a < 0 || b < 0) return res.status(502).json({ error: 'json topilmadi' });
+        return res.json(JSON.parse(content.slice(a, b + 1)));
+    } catch (e) {
+        console.error('vision-calibrate xato:', e.message);
+        return res.status(502).json({ error: e.message });
+    }
+});
+
 app.get('/health', (req, res) => res.json({ ok: true, model: GROQ_MODEL, threshold: GOAL_THRESHOLD }));
 
 app.listen(PORT, '0.0.0.0', () => {

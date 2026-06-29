@@ -125,8 +125,8 @@ public class MyAccessibilityBotService extends AccessibilityService {
         matchEntryStep = 0;
         smoothBallX = -1; smoothBallY = -1;
         ballMissStreak = 0; dynThreshold = -1;
-        // #43 Groq kaliti bo'lsa, START'da AI kalibrlashni avto-ishga tushiramiz
-        if (!LocalConfig.getGroqKey(this).isEmpty()) {
+        // #43 Backend URL bo'lsa, START'da AI kalibrlashni avto-ishga tushiramiz
+        if (!LocalConfig.getBackendUrl(this).isEmpty()) {
             botHandler.postDelayed(this::autoAiCalibrate, 7000);
         }
         botHandler.post(this::tick);
@@ -590,11 +590,11 @@ public class MyAccessibilityBotService extends AccessibilityService {
     // #43 Groq Vision bilan tugmalarni avto-joylashtirish (START'da, kalit bo'lsa)
     private void autoAiCalibrate() {
         if (!loopActive) return;
-        String key = LocalConfig.getGroqKey(this);
-        if (key == null || key.isEmpty()) return;
+        String url = LocalConfig.getBackendUrl(this);
+        if (url == null || url.isEmpty()) return;
         Bitmap frame = BotState.get().getLatestFrameCopy();
         if (frame == null) return;
-        new Thread(() -> GroqVision.autoCalibrate(frame, key, new GroqVision.Cb() {
+        new Thread(() -> GroqVision.autoCalibrate(frame, url, new GroqVision.Cb() {
             @Override public void onResult(List<ButtonCoord> b) {
                 LocalConfig.saveButtons(getApplicationContext(), b);
                 BotSettings s2 = BotState.get().settings;

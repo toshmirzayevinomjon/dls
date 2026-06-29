@@ -47,16 +47,16 @@ public class MainActivity extends AppCompatActivity {
         btnStart.setText("3. Ekran olishni boshlash + Overlay");
         btnStart.setOnClickListener(v -> requestProjection());
 
-        // Groq AI kaliti (ixtiyoriy — "AI Sozlash" uchun)
+        // Backend URL (Railway) — AI kalibrlash shu orqali. Kalit ILOVADA EMAS.
         final android.widget.EditText keyField = new android.widget.EditText(this);
-        keyField.setHint("Groq API kaliti (ixtiyoriy, AI Sozlash uchun)");
-        keyField.setText(LocalConfig.getGroqKey(this));
+        keyField.setHint("Backend URL (Railway, masalan https://xxx.up.railway.app)");
+        keyField.setText(LocalConfig.getBackendUrl(this));
 
         Button btnSaveKey = new Button(this);
-        btnSaveKey.setText("Groq kalitni saqlash");
+        btnSaveKey.setText("Backend URL saqlash");
         btnSaveKey.setOnClickListener(v -> {
-            LocalConfig.saveGroqKey(this, keyField.getText().toString().trim());
-            Toast.makeText(this, "Kalit saqlandi", Toast.LENGTH_SHORT).show();
+            LocalConfig.saveBackendUrl(this, keyField.getText().toString().trim());
+            Toast.makeText(this, "Backend URL saqlandi", Toast.LENGTH_SHORT).show();
         });
 
         statusView = new android.widget.TextView(this);
