@@ -5,10 +5,17 @@ import com.example.dlsbot.net.BotSettings;
 import org.opencv.core.Core;
 import org.opencv.core.CvType;
 import org.opencv.core.Mat;
+import org.opencv.core.MatOfPoint;
+import org.opencv.core.MatOfPoint2f;
 import org.opencv.core.Point;
 import org.opencv.core.Rect;
+import org.opencv.core.Scalar;
 import org.opencv.core.Size;
 import org.opencv.imgproc.Imgproc;
+import org.opencv.imgproc.Moments;
+
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * OpenCV ko'rish yordamchisi:
@@ -141,6 +148,60 @@ public final class Vision {
         }
         blurred.release();
         circles.release();
+        if (roiMat != null) roiMat.release();
+        return best;
+    }
+
+    // #21 To'pni OQ RANGI bo'yicha topish (HSV) — dumaloq oq shaklni qidiradi.
+    public static Match detectBallByWhiteColor(Mat rgba, Rect roi) {
+        if (rgba == null || rgba.empty()) return null;
+        Mat area = rgba;
+        int offX = 0, offY = 0;
+        Mat roiMat = null;
+        if (roi != null) {
+            Rect safe = clampRect(roi, rgba.cols(), rgba.rows());
+            if (safe.width <= 0 || safe.height <= 0) return null;
+            roiMat = new Mat(rgba, safe);
+            area = roiMat;
+            offX = safe.x;
+            offY = safe.y;
+        }
+
+        Mat rgb = new Mat(), hsv = new Mat(), mask = new Mat();
+        Imgproc.cvtColor(area, rgb, Imgproc.COLOR_RGBA2RGB);
+        Imgproc.cvtColor(rgb, hsv, Imgproc.COLOR_RGB2HSV);
+        // Oq: past to'yinganlik (S), yuqori yorqinlik (V)
+        Core.inRange(hsv, new Scalar(0, 0, 200), new Scalar(180, 45, 255), mask);
+        Imgproc.medianBlur(mask, mask, 3);
+
+        List<MatOfPoint> contours = new ArrayList<>();
+        Mat hierarchy = new Mat();
+        Imgproc.findContours(mask, contours, hierarchy,
+                Imgproc.RETR_EXTERNAL, Imgproc.CHAIN_APPROX_SIMPLE);
+
+        Match best = null;
+        double bestScore = 0;
+        for (MatOfPoint c : contours) {
+            double a = Imgproc.contourArea(c);
+            if (a < 8 || a > 500) continue;
+            MatOfPoint2f c2f = new MatOfPoint2f(c.toArray());
+            double peri = Imgproc.arcLength(c2f, true);
+            c2f.release();
+            if (peri <= 0) continue;
+            double circ = 4 * Math.PI * a / (peri * peri); // dumaloqlik
+            if (circ < 0.6) continue;
+            Moments m = Imgproc.moments(c);
+            if (m.get_m00() == 0) continue;
+            float cx = (float) (offX + m.get_m10() / m.get_m00());
+            float cy = (float) (offY + m.get_m01() / m.get_m00());
+            if (circ > bestScore) {
+                bestScore = circ;
+                best = new Match(cx, cy, (float) Math.min(0.9, 0.6 + circ * 0.3), 1.0f);
+            }
+        }
+
+        rgb.release(); hsv.release(); mask.release(); hierarchy.release();
+        for (MatOfPoint c : contours) c.release();
         if (roiMat != null) roiMat.release();
         return best;
     }

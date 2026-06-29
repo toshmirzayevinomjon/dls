@@ -62,6 +62,9 @@ public class MyAccessibilityBotService extends AccessibilityService {
     private int ballMissStreak = 0;
     private float dynThreshold = -1;
 
+    // #21 Rangli kadr (oq-to'p aniqlash uchun)
+    private Mat colorSmall;
+
     private String gameState = "NOMA'LUM";
     private volatile String currentPackage = "";
     private long lastInMatchTime = 0;
@@ -178,9 +181,11 @@ public class MyAccessibilityBotService extends AccessibilityService {
             Bitmap frame = state.getLatestFrameCopy();
             if (frame != null && state.isReady()) {
                 Mat small = prepare(frame, s);
+                colorSmall = prepareColor(frame, s);
                 frame.recycle();
                 navigateAndPlay(small, s);
                 small.release();
+                if (colorSmall != null) { colorSmall.release(); colorSmall = null; }
                 updateFps();
             }
             heatThrottle(s);
@@ -202,6 +207,15 @@ public class MyAccessibilityBotService extends AccessibilityService {
         Mat small = new Mat();
         Imgproc.resize(gray, small, new Size(s.processWidth, s.processHeight));
         gray.release();
+        return small;
+    }
+
+    private Mat prepareColor(Bitmap frame, BotSettings s) {
+        Mat full = new Mat();
+        Utils.bitmapToMat(frame, full);
+        Mat small = new Mat();
+        Imgproc.resize(full, small, new Size(s.processWidth, s.processHeight));
+        full.release();
         return small;
     }
 
@@ -239,6 +253,8 @@ public class MyAccessibilityBotService extends AccessibilityService {
                 : null;
         // #9 Shablon bo'lmasa yoki topilmasa -> rang/shakl bo'yicha qidiramiz
         if (ball == null) ball = Vision.detectBallByColor(small, roi);
+        // #21 Hali topilmasa -> oq rangi bo'yicha (HSV)
+        if (ball == null && colorSmall != null) ball = Vision.detectBallByWhiteColor(colorSmall, roi);
 
         if (ball != null) {
             ballMissStreak = 0;
