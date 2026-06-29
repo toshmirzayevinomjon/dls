@@ -41,8 +41,11 @@ public final class LocalConfig {
         prefs(c).edit().putString("backend_url", url).apply();
     }
 
+    // Default: foydalanuvchining Railway backend manzili — avtomatik ishlatiladi
+    public static final String DEFAULT_BACKEND_URL = "https://dls-production-ad8e.up.railway.app/";
+
     public static String getBackendUrl(Context c) {
-        return prefs(c).getString("backend_url", "");
+        return prefs(c).getString("backend_url", DEFAULT_BACKEND_URL);
     }
 
     public static void applyCalibration(Context c, BotSettings s) {
