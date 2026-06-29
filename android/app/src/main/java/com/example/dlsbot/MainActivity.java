@@ -45,9 +45,23 @@ public class MainActivity extends AppCompatActivity {
         btnStart.setText("3. Ekran olishni boshlash + Overlay");
         btnStart.setOnClickListener(v -> requestProjection());
 
+        // Groq AI kaliti (ixtiyoriy — "AI Sozlash" uchun)
+        final android.widget.EditText keyField = new android.widget.EditText(this);
+        keyField.setHint("Groq API kaliti (ixtiyoriy, AI Sozlash uchun)");
+        keyField.setText(LocalConfig.getGroqKey(this));
+
+        Button btnSaveKey = new Button(this);
+        btnSaveKey.setText("Groq kalitni saqlash");
+        btnSaveKey.setOnClickListener(v -> {
+            LocalConfig.saveGroqKey(this, keyField.getText().toString().trim());
+            Toast.makeText(this, "Kalit saqlandi", Toast.LENGTH_SHORT).show();
+        });
+
         root.addView(btnOverlay);
         root.addView(btnAccess);
         root.addView(btnStart);
+        root.addView(keyField);
+        root.addView(btnSaveKey);
         setContentView(root);
 
         projectionManager = (MediaProjectionManager) getSystemService(Context.MEDIA_PROJECTION_SERVICE);

@@ -36,6 +36,14 @@ public final class LocalConfig {
         return prefs(c).getBoolean("calibrated", false);
     }
 
+    public static void saveGroqKey(Context c, String key) {
+        prefs(c).edit().putString("groq_key", key).apply();
+    }
+
+    public static String getGroqKey(Context c) {
+        return prefs(c).getString("groq_key", "");
+    }
+
     public static void applyCalibration(Context c, BotSettings s) {
         if (s.buttons == null) return;
         SharedPreferences p = prefs(c);
