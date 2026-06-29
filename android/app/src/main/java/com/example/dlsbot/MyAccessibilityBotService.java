@@ -37,6 +37,8 @@ public class MyAccessibilityBotService extends AccessibilityService {
     private static final String TAG = "DLSBot";
     private static final int JITTER_PX = 10;
     private static final long GOAL_DEBOUNCE_MS = 8000;
+    private static final long MATCH_ENTRY_TAP_GAP_MS = 1400;
+    private static final long MATCH_ENTRY_RESET_MS = 9000;
 
     private static MyAccessibilityBotService instance;
     public static MyAccessibilityBotService getInstance() { return instance; }
@@ -61,6 +63,9 @@ public class MyAccessibilityBotService extends AccessibilityService {
     private long lastLaunchTime = 0;
     private long lastBackTime = 0;
     private int backPressCount = 0;
+    private boolean matchEntryActive = false;
+    private long lastMatchEntryTapTime = 0;
+    private int matchEntryStep = 0;
 
     private long lastFpsTime = 0;
     private int frameCount = 0;
@@ -106,7 +111,10 @@ public class MyAccessibilityBotService extends AccessibilityService {
         BotState.get().running.set(true);
         myGoals = 0; oppGoals = 0;
         backPressCount = 0;
-        lastInMatchTime = System.currentTimeMillis();
+        lastInMatchTime = 0;
+        matchEntryActive = true;
+        lastMatchEntryTapTime = 0;
+        matchEntryStep = 0;
         botHandler.post(this::tick);
     }
 
@@ -194,6 +202,7 @@ public class MyAccessibilityBotService extends AccessibilityService {
             gameState = "O'YIN OCHIQ EMAS";
             if (now - lastLaunchTime > s.relaunchAfterMs) {
                 lastLaunchTime = now;
+                resetMatchEntryFlow();
                 launchGame(s);
             }
             pushDebug(null, s);
@@ -206,6 +215,11 @@ public class MyAccessibilityBotService extends AccessibilityService {
 
         detectGoals(small, s);
 
+        if (matchEntryActive && tapMatchEntryStep(now, s)) {
+            pushDebug(null, s);
+            return;
+        }
+
         Rect roi = Vision.roiFromSettings(s);
         Mat ballTmpl = BotState.get().templates.get("ball");
         Vision.Match ball = (ballTmpl != null)
@@ -217,9 +231,16 @@ public class MyAccessibilityBotService extends AccessibilityService {
         if (ball != null) {
             gameState = "O'YINDA";
             lastInMatchTime = now;
+            matchEntryActive = false;
             backPressCount = 0;
             playFootball(small, ball, s, roi);
             pushDebug(ball, s);
+            return;
+        }
+
+        if (matchEntryActive) {
+            gameState = "MATCHGA KIRISH KUTILMOQDA";
+            pushDebug(null, s);
             return;
         }
 
@@ -253,8 +274,52 @@ public class MyAccessibilityBotService extends AccessibilityService {
         } else {
             backPressCount = 0;
             Log.i(TAG, "BACK yordam bermadi -> o'yin qayta ochiladi");
+            resetMatchEntryFlow();
             launchGame(s);
         }
+    }
+
+    private void resetMatchEntryFlow() {
+        matchEntryActive = true;
+        matchEntryStep = 0;
+        lastMatchEntryTapTime = 0;
+    }
+
+    private boolean tapMatchEntryStep(long now, BotSettings s) {
+        int sw = BotState.get().screenWidth;
+        int sh = BotState.get().screenHeight;
+        if (sw <= 0 || sh <= 0) return false;
+
+        if (lastMatchEntryTapTime > 0 && now - lastMatchEntryTapTime > MATCH_ENTRY_RESET_MS) {
+            matchEntryStep = 0;
+        }
+        if (now - lastMatchEntryTapTime < MATCH_ENTRY_TAP_GAP_MS) return false;
+
+        // DLS menyularida sozlashsiz matchga kirish: Career card -> Play Now -> PLAY.
+        // Koordinatalar 16:9 DLS UI uchun normallashtirilgan, ekran o'lchamiga moslanadi.
+        float[][] points = new float[][]{
+                {0.28f, 0.32f}, // Home: CAREER / Career screen: Play Now card
+                {0.28f, 0.32f}, // Agar birinchi bosish home'dan career'ga o'tkazgan bo'lsa
+                {0.87f, 0.86f}, // Match preview: past o'ngdagi yashil PLAY
+                {0.50f, 0.82f}, // Ba'zi dialoglarda markaz-past tasdiqlash
+                {0.87f, 0.86f}
+        };
+        String[] labels = new String[]{
+                "CAREER",
+                "PLAY_NOW",
+                "MATCH_PLAY",
+                "CONFIRM",
+                "MATCH_PLAY"
+        };
+
+        int idx = matchEntryStep % points.length;
+        humanTap(points[idx][0] * sw, points[idx][1] * sh, sw, sh);
+        gameState = "MATCHGA KIRISH: " + labels[idx];
+        lastMatchEntryTapTime = now;
+        matchEntryStep = (matchEntryStep + 1) % points.length;
+        backPressCount = 0;
+        Log.i(TAG, "Sozlamasiz navigatsiya: " + labels[idx] + " bosildi");
+        return true;
     }
 
     private void launchGame(BotSettings s) {

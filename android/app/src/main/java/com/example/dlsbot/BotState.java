@@ -36,8 +36,8 @@ public final class BotState {
     // #41 tezlik koeffitsienti: fast=0.6, normal=1.0, slow=1.6
     public volatile float speedFactor = 1.0f;
 
-    // #8 avtomatik rejim: DLS ochilsa botni o'zi START qilsin
-    public volatile boolean autoMode = false;
+    // #8 avtomatik rejim: DLS ochilsa botni o'zi START qilsin (doimo yoniq)
+    public volatile boolean autoMode = true;
 
     public synchronized void setLatestFrame(Bitmap bmp) {
         this.latestFrame = bmp;

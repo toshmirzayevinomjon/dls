@@ -5,17 +5,10 @@ import android.app.NotificationChannel;
 import android.app.NotificationManager;
 import android.app.Service;
 import android.content.Intent;
-import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.graphics.PixelFormat;
 import android.os.Build;
-import android.os.Handler;
 import android.os.IBinder;
-import android.os.Looper;
-
-import com.example.dlsbot.net.ButtonCoord;
-
-import java.util.List;
 import android.view.Gravity;
 import android.view.MotionEvent;
 import android.view.View;
@@ -30,7 +23,6 @@ import androidx.annotation.Nullable;
  * Minimal boshqaruv paneli:
  *   ▶ START   — hammasini o'zi qiladi (o'yinni ochish, menyu, match, o'ynash)
  *   ■ STOP    — to'xtatish
- *   ⚙ Sozlash — 1 martalik: menyu tugmalarini ko'rsatish + A/B/C kalibrlash
  *   AUTO      — DLS ochilsa bot o'zi START qilsin
  */
 public class FloatingOverlayService extends Service {
@@ -81,57 +73,11 @@ public class FloatingOverlayService extends Service {
             Toast.makeText(this, "To'xtatildi", Toast.LENGTH_SHORT).show();
         });
 
-        // 1 martalik sozlash: shablon olish -> tugagach kalibrlash
-        Button btnSetup = makeButton("⚙ Sozlash (ixtiyoriy)", "#1565C0");
-        btnSetup.setOnClickListener(v -> {
-            MyAccessibilityBotService bot = MyAccessibilityBotService.getInstance();
-            if (bot != null) bot.stopBot();
-            Toast.makeText(this, "Ixtiyoriy: aniqlik uchun menyu tugmalari + A/B/C", Toast.LENGTH_LONG).show();
-            new CaptureTemplateOverlay(this, () -> new CalibrationOverlay(this).start()).start();
-        });
-
-        // 🤖 AI Sozlash: Groq Vision skrinshotdan tugmalarni topib joylashtiradi
-        Button btnAi = makeButton("🤖 AI Sozlash", "#6A1B9A");
-        btnAi.setOnClickListener(v -> {
-            String key = LocalConfig.getGroqKey(this);
-            if (key == null || key.isEmpty()) {
-                Toast.makeText(this, "Avval ilovada Groq kalitini saqlang", Toast.LENGTH_LONG).show();
-                return;
-            }
-            Bitmap frame = BotState.get().getLatestFrameCopy();
-            if (frame == null) {
-                Toast.makeText(this, "Avval 'Ekran olishni boshlash' ni bosing", Toast.LENGTH_LONG).show();
-                return;
-            }
-            Toast.makeText(this, "AI tugmalarni qidirmoqda...", Toast.LENGTH_SHORT).show();
-            final Handler h = new Handler(Looper.getMainLooper());
-            new Thread(() -> GroqVision.autoCalibrate(frame, key, new GroqVision.Cb() {
-                @Override public void onResult(List<ButtonCoord> b) {
-                    LocalConfig.saveButtons(getApplicationContext(), b);
-                    h.post(() -> Toast.makeText(FloatingOverlayService.this,
-                            "AI " + b.size() + " ta tugmani joylashtirdi ✅", Toast.LENGTH_LONG).show());
-                }
-                @Override public void onError(String e) {
-                    h.post(() -> Toast.makeText(FloatingOverlayService.this,
-                            "AI xato: " + e, Toast.LENGTH_LONG).show());
-                }
-            })).start();
-        });
-
-        Button btnAuto = makeButton("AUTO: O'CHIQ", "#37474F");
-        btnAuto.setOnClickListener(v -> {
-            boolean on = !BotState.get().autoMode;
-            BotState.get().autoMode = on;
-            ((Button) v).setText("AUTO: " + (on ? "YONIQ" : "O'CHIQ"));
-            Toast.makeText(this, on ? "DLS ochilsa bot o'zi boshlaydi" : "Avto o'chirildi",
-                    Toast.LENGTH_SHORT).show();
-        });
+        // Qolgani avtomatik: DLS ochilsa bot o'zi boshlaydi (autoMode doimo yoniq)
+        BotState.get().autoMode = true;
 
         overlayView.addView(btnStart);
         overlayView.addView(btnStop);
-        overlayView.addView(btnSetup);
-        overlayView.addView(btnAi);
-        overlayView.addView(btnAuto);
 
         int type = (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
                 ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY

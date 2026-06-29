@@ -58,9 +58,9 @@ jobs:
           echo "--- OpenCV build.gradle (boshi) ---"
           head -50 build.gradle
 
-      - name: Generate Gradle wrapper (8.7)
+      - name: Generate Gradle wrapper (8.13)
         working-directory: android
-        run: gradle wrapper --gradle-version 8.7
+        run: gradle wrapper --gradle-version 8.13
 
       - name: Build Debug APK
         working-directory: android
