@@ -67,7 +67,6 @@ public class MyAccessibilityBotService extends AccessibilityService {
 
     // Tashxis: bosish (gesture) natijasi
     private int gestureOk = 0, gestureCancel = 0;
-    private volatile boolean gestureInFlight = false;
 
     private String gameState = "NOMA'LUM";
     private volatile String currentPackage = "";
@@ -523,28 +522,23 @@ public class MyAccessibilityBotService extends AccessibilityService {
     }
 
     private void dispatchPath(Path path, long durationMs) {
-        if (gestureInFlight) return; // oldingi bosish tugamaguncha yangisini yubormaymiz (BEKOR kamayadi)
         try {
-            gestureInFlight = true;
             GestureDescription.StrokeDescription stroke =
                     new GestureDescription.StrokeDescription(path, 0, Math.max(10, durationMs));
             dispatchGesture(new GestureDescription.Builder().addStroke(stroke).build(),
                     new GestureResultCallback() {
                         @Override public void onCompleted(GestureDescription gestureDescription) {
-                            gestureInFlight = false;
                             gestureOk++;
                             DebugOverlay d = DebugOverlay.getInstance();
                             if (d != null) d.setGesture(gestureOk, gestureCancel, "OK");
                         }
                         @Override public void onCancelled(GestureDescription gestureDescription) {
-                            gestureInFlight = false;
                             gestureCancel++;
                             DebugOverlay d = DebugOverlay.getInstance();
                             if (d != null) d.setGesture(gestureOk, gestureCancel, "BEKOR");
                         }
                     }, botHandler);
         } catch (Exception e) {
-            gestureInFlight = false;
             Log.e(TAG, "dispatchGesture xato: " + e.getMessage());
         }
     }
