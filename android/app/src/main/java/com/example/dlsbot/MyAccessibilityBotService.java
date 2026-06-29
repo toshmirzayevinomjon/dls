@@ -456,36 +456,23 @@ public class MyAccessibilityBotService extends AccessibilityService {
         ButtonCoord thru = s.findButton("C_thru");
         ButtonCoord joy = s.findButton("joystick");
 
+        // #31 Ko'p barmoq: joystickni ushlab turib AYNI PAYTDA tugmani bosamiz (futbol uslubi)
         switch (d.action) {
             case "SHOOT":
-                // #1 Mo'ljal: joystickni burchak tomon burib, keyin zarba
-                moveJoystick(joy, d.dirX, d.dirY, s, sw, sh);
-                if (shoot != null) {
-                    final float x = shoot.x * sw, y = shoot.y * sh;
-                    botHandler.postDelayed(() -> humanTap(x, y, sw, sh), Humanizer.randomDelay(110, 180));
-                }
+            case "CLEAR":
+                moveAndPress(joy, d.dirX, d.dirY, shoot, s, sw, sh);
                 break;
             case "THROUGH":
-                moveJoystick(joy, d.dirX, d.dirY, s, sw, sh);
-                if (thru != null) humanTap(thru.x * sw, thru.y * sh, sw, sh);
-                else if (pass != null) humanTap(pass.x * sw, pass.y * sh, sw, sh);
+                moveAndPress(joy, d.dirX, d.dirY, thru != null ? thru : pass, s, sw, sh);
                 break;
             case "PASS":
-                moveJoystick(joy, d.dirX, d.dirY, s, sw, sh);
-                if (pass != null) humanTap(pass.x * sw, pass.y * sh, sw, sh);
-                break;
-            case "CLEAR":
-                moveJoystick(joy, d.dirX, d.dirY, s, sw, sh);
-                if (shoot != null) humanTap(shoot.x * sw, shoot.y * sh, sw, sh);
-                break;
             case "TACKLE":
-                moveJoystick(joy, d.dirX, d.dirY, s, sw, sh);
-                if (pass != null) humanTap(pass.x * sw, pass.y * sh, sw, sh); // B = bosim/tackle
+                moveAndPress(joy, d.dirX, d.dirY, pass, s, sw, sh);
                 break;
             case "DRIBBLE":
             case "CHASE":
             default:
-                moveJoystick(joy, d.dirX, d.dirY, s, sw, sh);
+                moveJoystickHold(joy, d.dirX, d.dirY, s, sw, sh); // #32 uzluksiz harakat
                 break;
         }
     }
@@ -514,26 +501,66 @@ public class MyAccessibilityBotService extends AccessibilityService {
         dispatchPath(path, Humanizer.randomDelay(baseDur, baseDur + 60));
     }
 
-    private void dispatchPath(Path path, long durationMs) {
+    private void dispatchDescription(GestureDescription g) {
         try {
-            GestureDescription.StrokeDescription stroke =
-                    new GestureDescription.StrokeDescription(path, 0, Math.max(10, durationMs));
-            dispatchGesture(new GestureDescription.Builder().addStroke(stroke).build(),
-                    new GestureResultCallback() {
-                        @Override public void onCompleted(GestureDescription gestureDescription) {
-                            gestureOk++;
-                            DebugOverlay d = DebugOverlay.getInstance();
-                            if (d != null) d.setGesture(gestureOk, gestureCancel, "OK");
-                        }
-                        @Override public void onCancelled(GestureDescription gestureDescription) {
-                            gestureCancel++;
-                            DebugOverlay d = DebugOverlay.getInstance();
-                            if (d != null) d.setGesture(gestureOk, gestureCancel, "BEKOR");
-                        }
-                    }, botHandler);
+            dispatchGesture(g, new GestureResultCallback() {
+                @Override public void onCompleted(GestureDescription gd) {
+                    gestureOk++;
+                    DebugOverlay d = DebugOverlay.getInstance();
+                    if (d != null) d.setGesture(gestureOk, gestureCancel, "OK");
+                }
+                @Override public void onCancelled(GestureDescription gd) {
+                    gestureCancel++;
+                    DebugOverlay d = DebugOverlay.getInstance();
+                    if (d != null) d.setGesture(gestureOk, gestureCancel, "BEKOR");
+                }
+            }, botHandler);
         } catch (Exception e) {
             Log.e(TAG, "dispatchGesture xato: " + e.getMessage());
         }
+    }
+
+    private void dispatchPath(Path path, long durationMs) {
+        GestureDescription.StrokeDescription stroke =
+                new GestureDescription.StrokeDescription(path, 0, Math.max(10, durationMs));
+        dispatchDescription(new GestureDescription.Builder().addStroke(stroke).build());
+    }
+
+    private Path joystickPath(ButtonCoord joy, float dirX, float dirY, BotSettings s, int sw, int sh) {
+        float jx = joy.x * sw, jy = joy.y * sh;
+        float r = s.joystickRadius * sw;
+        float mag = (float) Math.sqrt(dirX * dirX + dirY * dirY);
+        if (mag < 0.01f) { dirX = s.attackRight ? 1f : -1f; dirY = 0f; mag = 1f; }
+        float ex = jx + r * dirX / mag, ey = jy + r * dirY / mag;
+        return Humanizer.humanSwipePath(
+                Humanizer.clamp(jx, 1, sw - 1), Humanizer.clamp(jy, 1, sh - 1),
+                Humanizer.clamp(ex, 1, sw - 1), Humanizer.clamp(ey, 1, sh - 1), JITTER_PX);
+    }
+
+    // #32 Joystickni uzoqroq ushlab harakatlanish (uzluksiz)
+    private void moveJoystickHold(ButtonCoord joy, float dirX, float dirY, BotSettings s, int sw, int sh) {
+        if (joy == null) return;
+        Path jp = joystickPath(joy, dirX, dirY, s, sw, sh);
+        GestureDescription.StrokeDescription js =
+                new GestureDescription.StrokeDescription(jp, 0, 280);
+        dispatchDescription(new GestureDescription.Builder().addStroke(js).build());
+    }
+
+    // #31 Ko'p barmoq: joystickni ushlab turib, AYNI PAYTDA tugmani bosish (futbol uslubi)
+    private void moveAndPress(ButtonCoord joy, float dirX, float dirY, ButtonCoord btn,
+                              BotSettings s, int sw, int sh) {
+        GestureDescription.Builder b = new GestureDescription.Builder();
+        if (joy != null) {
+            Path jp = joystickPath(joy, dirX, dirY, s, sw, sh);
+            b.addStroke(new GestureDescription.StrokeDescription(jp, 0, 280));
+        }
+        if (btn != null) {
+            Path bp = Humanizer.humanTapPath(
+                    Humanizer.clamp(btn.x * sw, 1, sw - 1),
+                    Humanizer.clamp(btn.y * sh, 1, sh - 1), JITTER_PX);
+            b.addStroke(new GestureDescription.StrokeDescription(bp, 60, Humanizer.microTapDuration()));
+        }
+        dispatchDescription(b.build());
     }
 
     private void heatThrottle(BotSettings s) {
